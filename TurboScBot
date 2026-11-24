@@ -1,15 +1,20 @@
--- Catware - Turbo Soccer (place 101880234193261). Obsidian UI, port of Catware - Blox League.
--- Turbo Soccer runs its own RocketSim-style sim (ReplicatedStorage.Shared.Sim, uu, 120Hz, same axis/sign
--- conventions as RocketSim). Matches go through Net.Prediction:step(controls) (server-authoritative, inputs
--- only); training/tutorial/free play runs a local single-car Sim.World. Both are hooked at their step.
--- Run: loadstring(game:HttpGet("https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"))()
--- Teleport autoload uses the same URL. Update that raw file with this version for these changes to load there.
 local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
+local DIR = "Catware/TurboSoccer/"
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local LP = game:GetService("Players").LocalPlayer
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local LP = Players.LocalPlayer
 
-if getgenv().CatwareTurboSoccerUnload then pcall(getgenv().CatwareTurboSoccerUnload) end
+local sharedEnv = getgenv()
+if sharedEnv.CatwareTurboSoccerLoading then return end
+local bootToken = {}
+sharedEnv.CatwareTurboSoccerLoading = bootToken
+task.delay(60, function()
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+end)
+if sharedEnv.CatwareTurboSoccerUnload then pcall(sharedEnv.CatwareTurboSoccerUnload) end
 
 local Shared = RS:WaitForChild("Shared")
 local Client = LP:WaitForChild("PlayerScripts"):WaitForChild("Client")
@@ -19,7 +24,7 @@ local BallPrediction = require(Sim:WaitForChild("BallPrediction"))
 local Prediction = require(Shared:WaitForChild("Net"):WaitForChild("Prediction"))
 local Protocol = require(Shared.Net:WaitForChild("Protocol"))
 local Units = require(Client:WaitForChild("Units"))
-local Motion = require(Client:WaitForChild("Motion")) -- atMenu(): title screen (the menu backdrop is a live World)
+local Motion = require(Client:WaitForChild("Motion"))
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
@@ -27,12 +32,10 @@ local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))
 local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
 local Options, Toggles = Library.Options, Library.Toggles
 
----------------------------------------------------------------- live sim
--- live = { cars = {{car, team, index}}, ball, pads, tick, me = entry } of whichever sim stepped last
 local live
 local lastMatchAt = -1
 local TICK = 1 / 120
-local path = {} -- predicted ball {pos, t} every PATH_STRIDE ticks
+local path = {}
 local PATH_STRIDE = 4
 local ballPred = BallPrediction.new()
 
@@ -49,7 +52,6 @@ local function fromWorld(w)
 	return { source = "world", cars = { me }, ball = w.ball, pads = w.pads and w.pads.pads or {}, tick = w.tick, me = me }
 end
 
--- Blox League-style read-only view of a car, so the control code below ports verbatim
 local function stateOf(car)
 	local b = car.body
 	return {
@@ -68,9 +70,6 @@ local function predictBall(seconds)
 	end
 end
 
----------------------------------------------------------------- control helpers (signs from Sim.Car)
--- steer/yaw + turns toward rot.right, pitch + = nose up, roll + tilts up toward rot.right
--- rates: pitch = -w·right, yaw = w·up, roll = -w·forward
 local UP = vector.create(0, 0, 1)
 local function clamp1(x) return math.clamp(x, -1, 1) end
 local function flat(v) return vector.create(v.x, v.y, 0) end
@@ -95,7 +94,7 @@ local function recover(c, st, heading)
 	orient(c, st, vector.normalize(h))
 end
 
-local maneuver -- active {kind, t0, pitch, yaw, ...}
+local maneuver
 local lastJumpInput = false
 local lastGroundJumpAt
 local controlSource, controlTick
@@ -265,17 +264,32 @@ local function nearBall(st, within)
 	if vector.magnitude(flat(d)) < within and fwd > -40 and math.abs(side) < 130 then return b.pos end
 end
 
+local function detectedTeamSize()
+	if not live then return 1 end
+	local teamCounts = {}
+	for _, e in live.cars do
+		if e.team ~= nil then teamCounts[e.team] = (teamCounts[e.team] or 0) + 1 end
+	end
+	local size = 1
+	for _, count in teamCounts do size = math.max(size, count) end
+	return math.clamp(size, 1, 3)
+end
+
 local function teammateCloser(st, target, interceptTime)
 	local me = live and live.me
 	if not me or me.team == nil then return false end
 	local t = interceptTime or 0
 	local myFuture = st.pos + st.vel * t
 	local myDistance = vector.magnitude(flat(target - myFuture))
+	local mode = detectedTeamSize()
+	local marginScale = mode == 3 and 1.5 or mode == 2 and 1 or 0
+	local margin = Options.TeammateMargin.Value * marginScale
 	for _, e in live.cars do
 		if e ~= me and e.team == me.team and e.car and not e.car.isDemoed then
 			local other = stateOf(e.car)
 			local distance = vector.magnitude(flat(target - (other.pos + other.vel * t)))
-			if distance + Options.TeammateMargin.Value < myDistance then return true end
+			if distance + margin < myDistance then return true end
+			if math.abs(distance - myDistance) <= margin and e.index ~= nil and me.index ~= nil and e.index < me.index then return true end
 		end
 	end
 	return false
@@ -284,11 +298,105 @@ end
 local function attackDirection()
 	local me = live and live.me
 	if not me then return nil end
-	-- RocketSim Soccar convention: team 0/Blue starts at -Y and attacks +Y.
 	local sign = me.team == 0 and 1 or me.team == 1 and -1 or nil
 	if not sign then return nil end
 	if Toggles.InvertAttackDirection.Value then sign = -sign end
 	return vector.create(0, sign, 0)
+end
+
+local LEARNING_FILE = DIR .. "learning.json"
+local learningData = { version = 1, modes = {} }
+local readLearningOk, savedLearning = pcall(function()
+	if not isfile(LEARNING_FILE) then return nil end
+	return HttpService:JSONDecode(readfile(LEARNING_FILE))
+end)
+if readLearningOk and type(savedLearning) == "table" and savedLearning.version == 1 and type(savedLearning.modes) == "table" then
+	learningData = savedLearning
+end
+local learningDirty = false
+local lastLearningSaveAt = os.clock()
+local lastOpponentSampleAt = 0
+local learningTrial
+
+local function learningEnabled()
+	return Toggles.AutoLearn ~= nil and Toggles.AutoLearn.Value == true
+end
+
+local function unitValue(value)
+	if type(value) ~= "number" or value ~= value then return 0 end
+	return math.clamp(value, -1, 1)
+end
+
+local function countValue(value)
+	if type(value) ~= "number" or value ~= value then return 0 end
+	return math.clamp(math.floor(value), 0, 1000000)
+end
+
+local function modeProfile(mode)
+	local key = tostring(math.clamp(mode or 1, 1, 3))
+	local profile = learningData.modes[key]
+	if type(profile) ~= "table" then
+		profile = {}
+		learningData.modes[key] = profile
+	end
+	if type(profile.actions) ~= "table" then profile.actions = {} end
+	for _, action in { "shot", "challenge", "waveDash", "speedFlip" } do
+		local metric = profile.actions[action]
+		if type(metric) ~= "table" then
+			metric = { samples = 0, average = 0 }
+			profile.actions[action] = metric
+		end
+		metric.samples = countValue(metric.samples)
+		metric.average = unitValue(metric.average)
+	end
+	profile.opponentPressure = math.clamp(tonumber(profile.opponentPressure) or 0, 0, 1)
+	profile.pressureSamples = countValue(profile.pressureSamples)
+	return profile
+end
+
+local function saveLearning()
+	local ok = pcall(function()
+		if not isfolder("Catware") then makefolder("Catware") end
+		if not isfolder(DIR) then makefolder(DIR) end
+		writefile(LEARNING_FILE, HttpService:JSONEncode(learningData))
+	end)
+	if ok then learningDirty = false end
+end
+
+local function adaptiveShotAlignment()
+	local value = Options.ShotAlignment.Value
+	if not learningEnabled() then return value end
+	local metric = modeProfile(detectedTeamSize()).actions.shot
+	if metric.samples >= 3 then value -= metric.average * 0.05 end
+	return math.clamp(value, 0.5, 0.98)
+end
+
+local function adaptiveAerialRange()
+	local value = Options.AerialRange.Value
+	if not learningEnabled() then return value end
+	local profile = modeProfile(detectedTeamSize())
+	local challenge = profile.actions.challenge
+	if challenge.samples >= 3 then value += challenge.average * 75 end
+	if profile.pressureSamples >= 8 then value += (profile.opponentPressure - 0.5) * 100 end
+	return math.clamp(value, 250, 2200)
+end
+
+local function adaptiveWaveDashLead()
+	local value = Options.WaveDashLead.Value
+	if learningEnabled() then
+		local movement = modeProfile(detectedTeamSize()).actions.waveDash
+		if movement.samples >= 3 then value += movement.average * 0.02 end
+	end
+	return math.clamp(value, 0.03, 0.2)
+end
+
+local function adaptiveKickoffStartSpeed()
+	local value = 5
+	if learningEnabled() then
+		local speedFlip = modeProfile(detectedTeamSize()).actions.speedFlip
+		if speedFlip.samples >= 3 then value -= speedFlip.average * 2 end
+	end
+	return math.clamp(value, 2, 10)
 end
 
 local function strikeOpportunity(st)
@@ -300,7 +408,7 @@ local function strikeOpportunity(st)
 		vector.dot(impact - (st.pos + st.vel * 0.15), st.rot.right)
 	local forward = flat(st.rot.forward)
 	if fwd <= 0 or math.abs(side) > Options.ShotLineTolerance.Value or vector.magnitude(forward) < 1 then return nil end
-	if vector.dot(vector.normalize(forward), attack) < Options.ShotAlignment.Value then return nil end
+	if vector.dot(vector.normalize(forward), attack) < adaptiveShotAlignment() then return nil end
 	local progress = vector.dot(impact, attack)
 	local incoming = vector.dot(ball.vel, attack) < -Options.ClearIncomingSpeed.Value
 	local kind = progress < -Options.ClearDepth.Value and incoming and "clear" or "shot"
@@ -322,7 +430,6 @@ local function dribbleSetup(st)
 end
 
 local function timeToGround(st)
-	-- Defaults match RocketSim GRAVITY_Z=-650 and CAR_SPAWN_REST_Z=17; both are tunable for this game's build.
 	local height = st.pos.z - Options.WaveDashGroundZ.Value
 	if height <= 0 then return 0 end
 	local gravity = Options.WaveDashGravity.Value
@@ -343,12 +450,8 @@ local function wallShotOpportunity(st)
 	return target
 end
 
----------------------------------------------------------------- Nexto (neural bot)
--- Nexto by Rolv-Arild & co (github.com/Rolv-Arild/Necto, CC BY-NC-SA 4.0), Luau port shared with Blox League.
 local NX
 local REPO = "https://gitlab.com/azulacs/catware-blox-league/-/raw/main/"
-local DIR = "Catware/TurboSoccer/"
--- bump when nexto.lua or its weights change on the repo: caches without this stamp re-download once
 local NEXTO_VERSION = "2"
 local STAMP = DIR .. "nexto.version"
 local fresh = isfile(STAMP) and readfile(STAMP) == NEXTO_VERSION
@@ -362,14 +465,12 @@ local function source(name)
 	end)
 	return src
 end
-local nxOk, nxErr = pcall(function()
+pcall(function()
 	NX = loadstring(source("nexto.lua"))().load(loadstring(source("nexto_weights.lua"))())
-	if not fresh then pcall(writefile, STAMP, NEXTO_VERSION) end -- only once both loaded fine
+	if not fresh then pcall(writefile, STAMP, NEXTO_VERSION) end
 end)
-if not nxOk then warn("[Catware] Nexto failed to load:", nxErr) end
 local nx = { action = {0,0,0,0,0,0,0,0}, nextTick = 0, job = nil, kick = -1, lastGround = {}, spent = 0, deadline = 0 }
 
--- nexto.lua speaks the Blox League arena API; wrap the live sim in it
 local function nxArena()
 	local cars, me = {}, nil
 	for _, e in live.cars do
@@ -394,15 +495,18 @@ local function kickoffTaker(arena, me)
 	for _, car in arena.cars do
 		if car ~= me and car.team == me.team and math.abs(d(car) - mine) <= 10 then
 			local ox = car:GetState().pos.x
+			local lateralTie = math.abs(ox - mx) <= 10
 			local isLeft = me.team == 0 and ox < mx or me.team == 1 and ox > mx
-			if not isLeft then return false end
+			if lateralTie then
+				if car.id == nil or me.id == nil or car.id < me.id then return false end
+			elseif not isLeft then
+				return false
+			end
 		end
 	end
 	return true
 end
 
--- seconds of inference per frame: the game can run several ticks in one frame when catching up,
--- so the budget is shared by all of them (nx.spent resets on RenderStepped)
 local NX_BUDGET = 0.004
 if NX then
 	NX.step = function()
@@ -414,7 +518,7 @@ local function nextoControls(c, st)
 	if not NX then error("Nexto isn't loaded (see the earlier warning)") end
 	local tick = live.tick
 	local arena, me
-	if nx.pads ~= live.pads then nx.pads, nx.padMap = live.pads, nil end -- new sim, re-match pads
+	if nx.pads ~= live.pads then nx.pads, nx.padMap = live.pads, nil end
 	if not nx.job and tick >= nx.nextTick then
 		nx.nextTick = tick + 8
 		arena, me = nxArena()
@@ -455,8 +559,6 @@ local function nextoControls(c, st)
 	c.jump, c.boost, c.handbrake = a[6] > 0, a[7] > 0, a[8] > 0
 end
 
----------------------------------------------------------------- step hooks
--- c: the controls about to be simulated for our car this tick
 local function drive(c)
 	local me = live.me
 	if not me then resetControlState() return end
@@ -475,10 +577,9 @@ local function drive(c)
 		resetControlState()
 	end
 	if Toggles.NextoBot.Value then
-		local ok, err = pcall(nextoControls, c, st)
+		local ok = pcall(nextoControls, c, st)
 		if not ok then
 			nx.job = nil
-			if nx.lastError ~= tostring(err) then warn("[Catware] nexto:", err) nx.lastError = tostring(err) end
 		end
 		return
 	end
@@ -491,7 +592,7 @@ local function drive(c)
 	local kickoffPause = ball and ball.pos.x == 0 and ball.pos.y == 0 and vector.magnitude(ball.vel) == 0
 	local speed = vector.magnitude(st.vel)
 	if kickoffPause and speed < 5 then kickoffAssist.armed = true end
-	if Toggles.AutoSpeedFlip.Value and kickoffAssist.armed and not kickoffAssist.locked and speed > 5 then
+	if Toggles.AutoSpeedFlip.Value and kickoffAssist.armed and not kickoffAssist.locked and speed > adaptiveKickoffStartSpeed() then
 		kickoffAssist.locked = true
 		if st.isOnGround then
 			local arena, kickoffMe = nxArena()
@@ -507,6 +608,7 @@ local function drive(c)
 	end
 
 	local intercept, interceptTime, interceptDistance = bestBallTarget(st)
+	local aerialRange = adaptiveAerialRange()
 	local forward, toIntercept = flat(st.rot.forward), intercept and flat(intercept - st.pos)
 	local behindBall = false
 	if intercept and toIntercept and vector.magnitude(toIntercept) > Options.FlipRange.Value
@@ -540,7 +642,7 @@ local function drive(c)
 	end
 	if not maneuver and Toggles.AutoFastAerial.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= aerialReadyAt
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
-		and interceptDistance <= Options.AerialRange.Value
+		and interceptDistance <= aerialRange
 		and intercept.z - st.pos.z >= Options.AerialHeight.Value
 		and st.boost > 0 and c.throttle > -0.3
 		and not teammateCloser(st, intercept, interceptTime) then
@@ -558,7 +660,7 @@ local function drive(c)
 		and lastGroundJumpAt and now() - lastGroundJumpAt <= Options.WaveDashJumpWindow.Value
 		and now() >= waveDashReadyAt then
 		local landingTime = timeToGround(st)
-		if landingTime >= 0 and landingTime <= Options.WaveDashLead.Value then
+		if landingTime >= 0 and landingTime <= adaptiveWaveDashLead() then
 			local direction = flat(st.vel)
 			if vector.magnitude(direction) < 1 then direction = flat(st.rot.forward) end
 			if startWaveDash(st, st.pos + direction * 100) then waveDashReadyAt = now() + 0.4 end
@@ -586,7 +688,7 @@ local function drive(c)
 	if Toggles.AutoAirFollow.Value and not st.isOnGround and not st.isFlipping and c.boost
 		and math.abs(c.pitch) + math.abs(c.yaw) + math.abs(c.roll) < 0.1
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
-		and interceptDistance <= Options.AerialRange.Value and st.boost > 0
+		and interceptDistance <= aerialRange and st.boost > 0
 		and not teammateCloser(st, intercept, interceptTime) then
 		recover(c, st, intercept - st.pos)
 		c.boost = true
@@ -604,22 +706,116 @@ local function drive(c)
 	end
 end
 
+local actionCategory = {
+	shot = "shot", clear = "shot",
+	flip = "challenge", fastAerial = "challenge", halfFlip = "challenge",
+	flick = "challenge", wallShot = "challenge",
+	speedFlip = "speedFlip", waveDash = "waveDash",
+}
+
+local function beginLearningTrial(activeManeuver)
+	local category = actionCategory[activeManeuver.kind]
+	local me = live and live.me
+	local ball = live and live.ball and live.ball.body
+	if not category or not me or not ball then return nil end
+	local state = stateOf(me.car)
+	return {
+		maneuver = activeManeuver,
+		category = category,
+		mode = detectedTeamSize(),
+		tick = live.tick,
+		ballVelocity = ball.vel,
+		attack = attackDirection(),
+		distance = vector.magnitude(flat(ball.pos - state.pos)),
+		speed = vector.magnitude(flat(state.vel)),
+	}
+end
+
+local function finishLearningTrial(trial)
+	if not live or live.source ~= "match" or live.tick < trial.tick then return end
+	local me = live.me
+	local ball = live.ball and live.ball.body
+	if not me or not ball then return end
+	local state = stateOf(me.car)
+	local reward
+	if trial.category == "shot" and trial.attack then
+		local before = vector.dot(trial.ballVelocity, trial.attack)
+		local after = vector.dot(ball.vel, trial.attack)
+		reward = unitValue((after - before) / math.max(math.abs(before), math.abs(after), 1))
+	elseif trial.category == "waveDash" or trial.category == "speedFlip" then
+		local speed = vector.magnitude(flat(state.vel))
+		reward = unitValue((speed - trial.speed) / math.max(trial.speed, 1))
+	else
+		local distance = vector.magnitude(flat(ball.pos - state.pos))
+		reward = unitValue((trial.distance - distance) / math.max(trial.distance, 1))
+	end
+	local metric = modeProfile(trial.mode).actions[trial.category]
+	metric.samples += 1
+	local rate = 1 / math.min(metric.samples, 8)
+	metric.average = unitValue(metric.average + (reward - metric.average) * rate)
+	learningDirty = true
+end
+
+local function observeOpponentPressure()
+	if os.clock() - lastOpponentSampleAt < 0.5 then return end
+	lastOpponentSampleAt = os.clock()
+	local me = live and live.me
+	local ball = live and live.ball and live.ball.body
+	if not me or not ball or me.team == nil then return end
+	local ownDistance, opponentDistance = math.huge, math.huge
+	for _, entry in live.cars do
+		if entry.car and not entry.car.isDemoed then
+			local distance = vector.magnitude(flat(ball.pos - entry.car.body.pos))
+			if entry.team == me.team then
+				ownDistance = math.min(ownDistance, distance)
+			elseif entry.team ~= nil then
+				opponentDistance = math.min(opponentDistance, distance)
+			end
+		end
+	end
+	if ownDistance == math.huge or opponentDistance == math.huge then return end
+	local profile = modeProfile(detectedTeamSize())
+	profile.pressureSamples += 1
+	local rate = 1 / math.min(profile.pressureSamples, 8)
+	local observedPressure = opponentDistance < ownDistance and 1 or 0
+	profile.opponentPressure += (observedPressure - profile.opponentPressure) * rate
+	learningDirty = true
+end
+
+local function updateLearning()
+	if not learningEnabled() or not live or live.source ~= "match" then
+		learningTrial = nil
+		return
+	end
+	observeOpponentPressure()
+	local current = maneuver
+	if learningTrial and live.tick < learningTrial.tick then learningTrial = nil end
+	if learningTrial and current ~= learningTrial.maneuver then
+		finishLearningTrial(learningTrial)
+		learningTrial = nil
+	end
+	if not learningTrial and current then learningTrial = beginLearningTrial(current) end
+	if learningDirty and os.clock() - lastLearningSaveAt >= 30 then
+		saveLearning()
+		lastLearningSaveAt = os.clock()
+	end
+end
+
 local origPStep, origWStep = Prediction.step, World.step
 local wrappedPStep
 wrappedPStep = function(self, controls, ...)
 	lastMatchAt = os.clock()
 	live = fromMatch(self)
-	-- only while the ball is live: goal replays, countdowns and the end screen keep stepping too
 	if controls and self.match.phase == "play" then
 		drive(controls)
-		Protocol.quantize(controls) -- same rounding the game applies before step, so server and history agree
+		Protocol.quantize(controls)
 	end
+	pcall(updateLearning)
 	return origPStep(self, controls, ...)
 end
 Prediction.step = wrappedPStep
 local wrappedWStep
 wrappedWStep = function(self, ...)
-	-- the menu/training world can keep ticking during a match; the match wins
 	if os.clock() - lastMatchAt > 0.25 then
 		if Motion.atMenu() then
 			live = nil
@@ -634,7 +830,6 @@ wrappedWStep = function(self, ...)
 end
 World.step = wrappedWStep
 
----------------------------------------------------------------- visuals (Drawing)
 local cam = workspace.CurrentCamera
 local lines, texts = {}, {}
 local landing = Drawing.new("Circle")
@@ -703,9 +898,8 @@ local function draw()
 	for i = m + 1, #texts do texts[i].Visible = false end
 end
 
--- Match-flow buttons are discovered from visible UI text/name; no game remotes are guessed.
 local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt = 0, 0, 0
-local rematchQueued, flowInputWarned = false, false
+local rematchQueued = false
 local function guiIsVisible(button, root)
 	local node = button
 	while node and node ~= root do
@@ -776,10 +970,6 @@ local function activateUiButton(button)
 			if fired then return true end
 		end
 	end
-	if not flowInputWarned then
-		flowInputWarned = true
-		warn("[Catware] Auto match flow needs firesignal or getconnections support from the executor")
-	end
 	return false
 end
 
@@ -811,7 +1001,7 @@ local function autoAdvanceUi()
 end
 
 local conn = RunService.RenderStepped:Connect(function()
-	local ok, err = pcall(function()
+	local ok = pcall(function()
 		local want = Toggles.BallPath.Value or Toggles.AutoFlip.Value
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
 			or Toggles.AutoStrike.Value or Toggles.AutoAirFollow.Value
@@ -820,12 +1010,10 @@ local conn = RunService.RenderStepped:Connect(function()
 		autoAdvanceUi()
 	end)
 	nx.spent = 0
-	if not ok then warn("[Catware]", err) end
 end)
 
----------------------------------------------------------------- UI
 local hasExecutor, executorName = pcall(identifyexecutor)
-local Window = Library:CreateWindow({ Title = "Catware", Footer = "Turbo Soccer | " .. (hasExecutor and executorName or "Unknown"), Icon = "cat", NotifySide = "Right", ShowCustomCursor = false })
+local Window = Library:CreateWindow({ Title = "Catware", Footer = "Turbo Soccer | " .. (hasExecutor and executorName or "Unknown"), Icon = "cat", ShowCustomCursor = false })
 local Tabs = {
 	Main = Window:AddTab("Main", "car"),
 	Visuals = Window:AddTab("Visuals", "eye"),
@@ -849,7 +1037,6 @@ Mechanics:AddToggle("AutoWaveDash", { Text = "Ground wave dash", Default = true,
 Mechanics:AddSlider("WaveDashGroundZ", { Text = "Car ground height (uu)", Default = 17, Min = 0, Max = 60, Rounding = 0 })
 Mechanics:AddSlider("WaveDashGravity", { Text = "Gravity magnitude (uu/s²)", Default = 650, Min = 300, Max = 1000, Rounding = 0 })
 Mechanics:AddSlider("WaveDashLead", { Text = "Wave dash lead time (s)", Default = 0.08, Min = 0.03, Max = 0.2, Rounding = 2 })
--- RocketSim DOUBLEJUMP_MAX_DELAY is 1.25s; adjustable in case Turbo Soccer diverges.
 Mechanics:AddSlider("WaveDashJumpWindow", { Text = "Time since first jump (s)", Default = 1.25, Min = 0.4, Max = 2, Rounding = 2 })
 Mechanics:AddSlider("WaveDashMinSpeed", { Text = "Wave dash minimum speed", Default = 300, Min = 0, Max = 1200, Rounding = 0 })
 Mechanics:AddSlider("WaveDashDuration", { Text = "Wave dash input duration (s)", Default = 0.18, Min = 0.08, Max = 0.35, Rounding = 2 })
@@ -860,7 +1047,8 @@ Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default
 Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.65, Min = 0.3, Max = 1, Rounding = 2 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
-Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0 })
+Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0,
+	Tooltip = "Team size is detected automatically: solo, duo, or trio. Trio uses a wider margin to reduce double commits." })
 Assist:AddToggle("AutoRecover", { Text = "Auto air recovery", Default = true, Tooltip = "Lands you on wheels when you're not touching air controls" })
 local Strike = Tabs.Main:AddRightGroupbox("Shot mechanics", "target")
 Strike:AddToggle("AutoStrike", { Text = "Smart shot / defensive clear", Default = true, Tooltip = "When you drive into a clean ball line, flips toward the opponent goal; clears an incoming ball from your half" })
@@ -884,14 +1072,15 @@ Vis:AddSlider("PathSeconds", { Text = "Prediction seconds", Default = 2, Min = 1
 Tabs.Visuals:AddRightGroupbox("Cars", "car"):AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
--- queue ourselves on teleport (server hops, private servers, tournaments) so Catware comes along
 local AUTOLOAD_FLAG = DIR .. "autoload"
 local LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 	.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
-	.. 'if not ok or type(source) ~= "string" then warn("[Catware] Could not download the teleport autoload script") return end '
-	.. 'local fn, err = loadstring(source) if not fn then warn("[Catware] Script compile failed: " .. tostring(err)) return end fn()'
-MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load after teleport", Default = isfile(AUTOLOAD_FLAG),
-	Tooltip = "Downloads and runs the configured script URL after teleport" })
+	.. 'if not ok or type(source) ~= "string" then return end '
+	.. 'local fn = loadstring(source) if not fn then return end fn()'
+MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
+	Tooltip = "Tunes shot alignment, aerial range, wave dash timing, and kickoff timing from local outcomes and opponent pressure." })
+MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport / rejoin", Default = isfile(AUTOLOAD_FLAG),
+	Tooltip = "Queues teleports. For kicks or disconnects, install the provided bootstrap in the executor AutoExecute folder." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
 MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
@@ -909,18 +1098,30 @@ Toggles.AutoLoad:OnChanged(function(on)
 		delfile(AUTOLOAD_FLAG)
 	end
 end)
+Toggles.AutoLearn:OnChanged(function(on)
+	if not on then saveLearning() end
+end)
 local queued = false
+local queueTeleport = queue_on_teleport or queueonteleport
 local teleportConn = LP.OnTeleport:Connect(function(state)
 	if state == Enum.TeleportState.Started and Toggles.AutoLoad.Value and not queued then
-		queued = true -- Started can fire again on retries; queue once
-		queue_on_teleport(LOADER)
+		if type(queueTeleport) == "function" then
+			queued = pcall(queueTeleport, LOADER)
+		end
+	elseif state == Enum.TeleportState.Failed then
+		queued = false
 	end
+end)
+local teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(player)
+	if player == LP then queued = false end
 end)
 
 getgenv().CatwareTurboSoccerUnload = function() Library:Unload() end
 Library:OnUnload(function()
+	saveLearning()
 	getgenv().CatwareTurboSoccerUnload = nil
 	teleportConn:Disconnect()
+	teleportFailedConn:Disconnect()
 	conn:Disconnect()
 	if Prediction.step == wrappedPStep then Prediction.step = origPStep end
 	if World.step == wrappedWStep then World.step = origWStep end
@@ -932,10 +1133,11 @@ end)
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind", "AutoLoad" }) -- AutoLoad lives in its own flag file
+SaveManager:SetIgnoreIndexes({ "MenuKeybind", "AutoLoad" })
 ThemeManager:SetFolder("Catware/TurboSoccer")
 SaveManager:SetFolder("Catware/TurboSoccer")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:SetDefaultTheme(ThemeManager.BuiltInThemes["Catppuccin"][2])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
+if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
