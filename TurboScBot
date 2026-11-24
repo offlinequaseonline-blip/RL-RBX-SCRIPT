@@ -2,8 +2,9 @@
 -- Turbo Soccer runs its own RocketSim-style sim (ReplicatedStorage.Shared.Sim, uu, 120Hz, same axis/sign
 -- conventions as RocketSim). Matches go through Net.Prediction:step(controls) (server-authoritative, inputs
 -- only); training/tutorial/free play runs a local single-car Sim.World. Both are hooked at their step.
--- Run: execute the contents of this revised file in the game's supported Luau environment.
--- For teleport autoload, save this file in the executor workspace as Catware/TurboSoccer/catware.lua.
+-- Run: loadstring(game:HttpGet("https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"))()
+-- Teleport autoload uses the same URL. Update that raw file with this version for these changes to load there.
+local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local LP = game:GetService("Players").LocalPlayer
@@ -41,7 +42,7 @@ local function fromMatch(P)
 	for _, e in m.cars do
 		if not e.vacant then table.insert(cars, e) end
 	end
-	return { source = "match", cars = cars, ball = m.ball, pads = m.pads and m.pads.pads or {}, tick = m.tick, me = P.localIndex and m.cars[P.localIndex] }
+	return { source = "match", cars = cars, ball = m.ball, pads = m.pads and m.pads.pads or {}, tick = m.tick, phase = m.phase, me = P.localIndex and m.cars[P.localIndex] }
 end
 local function fromWorld(w)
 	local me = { car = w.car, team = 0, index = 1 }
@@ -702,6 +703,113 @@ local function draw()
 	for i = m + 1, #texts do texts[i].Visible = false end
 end
 
+-- Match-flow buttons are discovered from visible UI text/name; no game remotes are guessed.
+local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt = 0, 0, 0
+local rematchQueued, flowInputWarned = false, false
+local function guiIsVisible(button, root)
+	local node = button
+	while node and node ~= root do
+		if node:IsA("GuiObject") and not node.Visible then return false end
+		if node:IsA("ScreenGui") and not node.Enabled then return false end
+		node = node.Parent
+	end
+	return node == root
+end
+
+local function buttonContext(button)
+	local parts = { button.Name }
+	if button:IsA("TextButton") then table.insert(parts, button.Text) end
+	for _, child in button:GetDescendants() do
+		if child:IsA("TextLabel") or child:IsA("TextButton") then
+			table.insert(parts, child.Name)
+			table.insert(parts, child.Text)
+		end
+	end
+	local node = button.Parent
+	local depth = 0
+	while node and depth < 6 do
+		table.insert(parts, node.Name)
+		if node:IsA("TextLabel") or node:IsA("TextButton") then table.insert(parts, node.Text) end
+		node = node.Parent
+		depth += 1
+	end
+	local lower = string.lower(table.concat(parts, " "))
+	return lower:gsub("[%s%p_]+", "")
+end
+
+local function isReplaySkip(context)
+	local replay = context:find("replay", 1, true) or context:find("repeticao", 1, true) or context:find("repetição", 1, true)
+	local skip = context:find("skip", 1, true) or context:find("pular", 1, true) or context:find("saltar", 1, true)
+	return replay ~= nil and skip ~= nil
+end
+
+local function isRematch(context)
+	local phrases = {
+		"rematch", "playagain", "requeue", "queueagain", "jogarnovamente",
+		"jogardenovo", "jogaroutrapartida", "jogaroutrajogo", "novapartida",
+		"partidanova", "revanche",
+	}
+	for _, phrase in phrases do
+		if context:find(phrase, 1, true) then return true end
+	end
+	return false
+end
+
+local function activateUiButton(button)
+	if type(firesignal) == "function" then
+		local ok = pcall(firesignal, button.Activated, nil, 0)
+		if not ok then ok = pcall(firesignal, button.Activated) end
+		if ok then return true end
+	end
+	if type(getconnections) == "function" then
+		local ok, connections = pcall(getconnections, button.Activated)
+		if ok and type(connections) == "table" then
+			local fired = false
+			for _, connection in connections do
+				local didCall, didFire = pcall(function()
+					if connection.Enabled == false or type(connection.Fire) ~= "function" then return false end
+					connection:Fire(nil, 0)
+					return true
+				end)
+				fired = fired or (didCall and didFire == true)
+			end
+			if fired then return true end
+		end
+	end
+	if not flowInputWarned then
+		flowInputWarned = true
+		warn("[Catware] Auto match flow needs firesignal or getconnections support from the executor")
+	end
+	return false
+end
+
+local function autoAdvanceUi()
+	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value then return end
+	local now = os.clock()
+	if now < nextFlowScanAt then return end
+	nextFlowScanAt = now + 0.3
+	if live and live.phase == "play" then rematchQueued = false end
+	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then return end
+	local replayButton, rematchButton
+	for _, item in playerGui:GetDescendants() do
+		if item:IsA("GuiButton") and item.Active and guiIsVisible(item, playerGui) then
+			local context = buttonContext(item)
+			if not replayButton and Toggles.AutoSkipReplay.Value and isReplaySkip(context) then replayButton = item end
+			if not rematchButton and Toggles.AutoRematch.Value and isRematch(context) then rematchButton = item end
+			if replayButton and rematchButton then break end
+		end
+	end
+	if replayButton and now - lastReplayClickAt >= 1.5 then
+		lastReplayClickAt = now
+		activateUiButton(replayButton)
+	end
+	if rematchButton and not rematchQueued and now - lastRematchClickAt >= 3 then
+		lastRematchClickAt = now
+		rematchQueued = activateUiButton(rematchButton)
+	end
+end
+
 local conn = RunService.RenderStepped:Connect(function()
 	local ok, err = pcall(function()
 		local want = Toggles.BallPath.Value or Toggles.AutoFlip.Value
@@ -709,6 +817,7 @@ local conn = RunService.RenderStepped:Connect(function()
 			or Toggles.AutoStrike.Value or Toggles.AutoAirFollow.Value
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
 		draw()
+		autoAdvanceUi()
 	end)
 	nx.spent = 0
 	if not ok then warn("[Catware]", err) end
@@ -777,11 +886,16 @@ Tabs.Visuals:AddRightGroupbox("Cars", "car"):AddToggle("BoostESP", { Text = "Boo
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 -- queue ourselves on teleport (server hops, private servers, tournaments) so Catware comes along
 local AUTOLOAD_FLAG = DIR .. "autoload"
-local LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end local p = "' .. DIR .. 'catware.lua" '
-	.. 'if not isfile(p) then warn("[Catware] Save the revised script as " .. p .. " before enabling teleport autoload") return end '
-	.. 'loadstring(readfile(p))()'
+local LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+	.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
+	.. 'if not ok or type(source) ~= "string" then warn("[Catware] Could not download the teleport autoload script") return end '
+	.. 'local fn, err = loadstring(source) if not fn then warn("[Catware] Script compile failed: " .. tostring(err)) return end fn()'
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load after teleport", Default = isfile(AUTOLOAD_FLAG),
-	Tooltip = "Re-runs Catware when you teleport to another Turbo Soccer server" })
+	Tooltip = "Downloads and runs the configured script URL after teleport" })
+MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
+	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
+MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
+	Tooltip = "Activates a visible UI button labeled rematch / play again once per match" })
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
