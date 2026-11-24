@@ -1076,7 +1076,8 @@ local AUTOLOAD_FLAG = DIR .. "autoload"
 local LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 	.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 	.. 'if not ok or type(source) ~= "string" then return end '
-	.. 'local fn = loadstring(source) if not fn then return end fn()'
+	.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+	.. 'pcall(fn)'
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
 	Tooltip = "Tunes shot alignment, aerial range, wave dash timing, and kickoff timing from local outcomes and opponent pressure." })
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport / rejoin", Default = isfile(AUTOLOAD_FLAG),
@@ -1102,12 +1103,26 @@ Toggles.AutoLearn:OnChanged(function(on)
 	if not on then saveLearning() end
 end)
 local queued = false
-local queueTeleport = queue_on_teleport or queueonteleport
+local function queueTeleport(code)
+	local env = getgenv()
+	local direct = queue_on_teleport or queueonteleport or env.queue_on_teleport or env.queueonteleport
+	if type(direct) == "function" then
+		local ok, result = pcall(direct, code)
+		if ok and result ~= false then return true end
+	end
+	local synEnv = env.syn or syn
+	if type(synEnv) == "table" and type(synEnv.queue_on_teleport) == "function" then
+		local ok, result = pcall(synEnv.queue_on_teleport, code)
+		if not ok or result == false then
+			ok, result = pcall(synEnv.queue_on_teleport, synEnv, code)
+		end
+		if ok and result ~= false then return true end
+	end
+	return false
+end
 local teleportConn = LP.OnTeleport:Connect(function(state)
 	if state == Enum.TeleportState.Started and Toggles.AutoLoad.Value and not queued then
-		if type(queueTeleport) == "function" then
-			queued = pcall(queueTeleport, LOADER)
-		end
+		queued = queueTeleport(LOADER)
 	elseif state == Enum.TeleportState.Failed then
 		queued = false
 	end
