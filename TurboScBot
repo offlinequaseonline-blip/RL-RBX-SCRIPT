@@ -17,6 +17,81 @@ task.delay(60, function()
 end)
 if sharedEnv.CatwareTurboSoccerUnload then pcall(sharedEnv.CatwareTurboSoccerUnload) end
 
+local AUTOLOAD_FLAG = DIR .. "autoload"
+local AUTOLOAD_SOURCE = DIR .. "autoload-source.lua"
+local embeddedSource = sharedEnv.CatwareTurboSoccerSource
+local cacheReady = false
+if type(embeddedSource) == "string" then
+	local writeOk = pcall(function()
+		if not isfolder("Catware") then makefolder("Catware") end
+		if not isfolder(DIR) then makefolder(DIR) end
+		writefile(AUTOLOAD_SOURCE, embeddedSource)
+	end)
+	if writeOk then
+		local readOk, cachedSource = pcall(readfile, AUTOLOAD_SOURCE)
+		cacheReady = readOk and cachedSource == embeddedSource
+	end
+end
+local LOADER
+if type(embeddedSource) == "string" then
+	if cacheReady then
+		local encodedPath = string.format("%q", AUTOLOAD_SOURCE)
+		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+			.. 'local env = getgenv() local ok, source = pcall(readfile, ' .. encodedPath .. ') '
+			.. 'if not ok or type(source) ~= "string" then return end '
+			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+			.. 'pcall(fn)'
+	else
+		local encodedSource = string.format("%q", embeddedSource)
+		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+			.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
+			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+			.. 'pcall(fn)'
+	end
+else
+	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
+		.. 'if not ok or type(source) ~= "string" then return end '
+		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+		.. 'pcall(fn)'
+end
+
+local queued = false
+local function queueTeleport(code)
+	local env = getgenv()
+	local direct = queue_on_teleport or queueonteleport or env.queue_on_teleport or env.queueonteleport
+	if type(direct) == "function" then
+		local ok, result = pcall(direct, code)
+		if ok and result ~= false then return true end
+	end
+	local synEnv = env.syn or syn
+	if type(synEnv) == "table" and type(synEnv.queue_on_teleport) == "function" then
+		local ok, result = pcall(synEnv.queue_on_teleport, code)
+		if not ok or result == false then ok, result = pcall(synEnv.queue_on_teleport, synEnv, code) end
+		if ok and result ~= false then return true end
+	end
+	return false
+end
+
+local function autoLoadEnabled()
+	if sharedEnv.CatwareTurboSoccerBootstrap == true then return true end
+	local ok, enabled = pcall(function() return isfile(AUTOLOAD_FLAG) and readfile(AUTOLOAD_FLAG) == "1" end)
+	return ok and enabled == true
+end
+
+local teleportConn = LP.OnTeleport:Connect(function(state)
+	if state == Enum.TeleportState.Started and autoLoadEnabled() and not queued then
+		queued = queueTeleport(LOADER)
+	elseif state == Enum.TeleportState.Failed then
+		queued = false
+	end
+end)
+local teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(player)
+	if player == LP then queued = false end
+end)
+
 local Shared = RS:WaitForChild("Shared")
 local Client = LP:WaitForChild("PlayerScripts"):WaitForChild("Client")
 local Sim = Shared:WaitForChild("Sim")
@@ -134,7 +209,7 @@ local function startDodge(st, target, kind, full3D)
 	if vector.magnitude(heading) < 1 then heading = vector.create(0, 1, 0) end
 	maneuver = {
 		kind = kind or "flip", t0 = now(), pitch = p / m, yaw = y / m,
-		heading = vector.normalize(heading), sawFlip = false,
+		heading = vector.normalize(heading), targetDirection = vector.normalize(flat(dir)), sawFlip = false,
 	}
 	return true
 end
@@ -239,9 +314,9 @@ local function runManeuver(c, st)
 		return true
 	end
 
-	if m.kind == "flip" or m.kind == "shot" or m.kind == "clear" or m.kind == "flick" or m.kind == "wallShot" then
+	if m.kind == "flip" or m.kind == "shot" or m.kind == "pass" or m.kind == "clear" or m.kind == "flick" or m.kind == "wallShot" then
 		if dt > 0.22 then maneuver = nil return false end
-		if m.kind == "clear" then c.throttle, c.boost = 1, st.boost > 0 end
+		if m.kind == "clear" or m.kind == "pass" then c.throttle, c.boost = 1, st.boost > 0 end
 		if dt < 0.08 then
 			c.jump = true
 		elseif dt < 0.13 then
@@ -276,15 +351,17 @@ local function detectedTeamSize()
 	return math.clamp(size, 1, 3)
 end
 
+local learnedDoubleCommitRate = { [1] = 0, [2] = 0, [3] = 0 }
+
 local function teammateCloser(st, target, interceptTime)
 	local me = live and live.me
-	if not me or me.team == nil then return false end
+	if not me or me.team == nil or not Toggles.TeamCoordination or not Toggles.TeamCoordination.Value then return false end
 	local t = interceptTime or 0
 	local myFuture = st.pos + st.vel * t
 	local myDistance = vector.magnitude(flat(target - myFuture))
 	local mode = detectedTeamSize()
 	local marginScale = mode == 3 and 1.5 or mode == 2 and 1 or 0
-	local margin = Options.TeammateMargin.Value * marginScale
+	local margin = Options.TeammateMargin.Value * marginScale + learnedDoubleCommitRate[mode] * 35
 	for _, e in live.cars do
 		if e ~= me and e.team == me.team and e.car and not e.car.isDemoed then
 			local other = stateOf(e.car)
@@ -341,7 +418,7 @@ local function modeProfile(mode)
 		learningData.modes[key] = profile
 	end
 	if type(profile.actions) ~= "table" then profile.actions = {} end
-	for _, action in { "shot", "challenge", "waveDash", "speedFlip" } do
+	for _, action in { "shot", "pass", "challenge", "waveDash", "speedFlip" } do
 		local metric = profile.actions[action]
 		if type(metric) ~= "table" then
 			metric = { samples = 0, average = 0 }
@@ -352,7 +429,18 @@ local function modeProfile(mode)
 	end
 	profile.opponentPressure = math.clamp(tonumber(profile.opponentPressure) or 0, 0, 1)
 	profile.pressureSamples = countValue(profile.pressureSamples)
+	profile.teamCommitRate = math.clamp(tonumber(profile.teamCommitRate) or 0, 0, 1)
+	profile.opponentCommitRate = math.clamp(tonumber(profile.opponentCommitRate) or 0, 0, 1)
+	profile.coordinationSamples = countValue(profile.coordinationSamples)
+	learnedDoubleCommitRate[tonumber(key)] = profile.teamCommitRate
 	return profile
+end
+
+for _, mode in { 1, 2, 3 } do
+	local profile = learningData.modes[tostring(mode)]
+	if type(profile) == "table" then
+		learnedDoubleCommitRate[mode] = math.clamp(tonumber(profile.teamCommitRate) or 0, 0, 1)
+	end
 end
 
 local function saveLearning()
@@ -368,7 +456,7 @@ local function adaptiveShotAlignment()
 	local value = Options.ShotAlignment.Value
 	if not learningEnabled() then return value end
 	local metric = modeProfile(detectedTeamSize()).actions.shot
-	if metric.samples >= 3 then value -= metric.average * 0.05 end
+	if metric.samples >= 3 then value += metric.average * 0.05 end
 	return math.clamp(value, 0.5, 0.98)
 end
 
@@ -400,6 +488,47 @@ local function adaptiveKickoffStartSpeed()
 	return math.clamp(value, 2, 10)
 end
 
+local function passOpportunity(impact)
+	if not Toggles.AutoPass or not Toggles.AutoPass.Value or detectedTeamSize() < 2 then return nil end
+	local me = live and live.me
+	local attack = attackDirection()
+	if not me or me.team == nil or not attack then return nil end
+	local profile = modeProfile(detectedTeamSize())
+	local minProgress = Options.PassMinProgress.Value - profile.opponentCommitRate * 120
+	local maxRange = Options.PassMaxRange.Value
+	local clearance = Options.PassLaneClearance.Value
+	local bestTarget, bestScore
+	for _, receiver in live.cars do
+		if receiver ~= me and receiver.team == me.team and receiver.car and not receiver.car.isDemoed then
+			local receiverState = stateOf(receiver.car)
+			local target = receiverState.pos + receiverState.vel * 0.35
+			local route = flat(target - impact)
+			local distance = vector.magnitude(route)
+			local progress = vector.dot(route, attack)
+			if distance >= 220 and distance <= maxRange and progress >= minProgress and progress / distance >= 0.2 then
+				local routeLengthSquared = vector.dot(route, route)
+				local laneBlocked = false
+				local receiverSpace = math.huge
+				for _, opponent in live.cars do
+					if opponent.team ~= me.team and opponent.car and not opponent.car.isDemoed then
+						local opponentState = stateOf(opponent.car)
+						local futureOpponent = opponentState.pos + opponentState.vel * 0.2
+						local along = math.clamp(vector.dot(flat(futureOpponent - impact), route) / routeLengthSquared, 0, 1)
+						local lanePoint = impact + route * along
+						if vector.magnitude(flat(futureOpponent - lanePoint)) < clearance then laneBlocked = true end
+						receiverSpace = math.min(receiverSpace, vector.magnitude(flat(target - futureOpponent)))
+					end
+				end
+				if not laneBlocked then
+					local score = progress - distance * 0.18 + math.min(receiverSpace, 500) * 0.12
+					if not bestScore or score > bestScore then bestTarget, bestScore = target, score end
+				end
+			end
+		end
+	end
+	return bestTarget
+end
+
 local function strikeOpportunity(st)
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
@@ -409,11 +538,21 @@ local function strikeOpportunity(st)
 		vector.dot(impact - (st.pos + st.vel * 0.15), st.rot.right)
 	local forward = flat(st.rot.forward)
 	if fwd <= 0 or math.abs(side) > Options.ShotLineTolerance.Value or vector.magnitude(forward) < 1 then return nil end
-	if vector.dot(vector.normalize(forward), attack) < adaptiveShotAlignment() then return nil end
+	local alignment = vector.dot(vector.normalize(forward), attack)
 	local progress = vector.dot(impact, attack)
 	local incoming = vector.dot(ball.vel, attack) < -Options.ClearIncomingSpeed.Value
-	local kind = progress < -Options.ClearDepth.Value and incoming and "clear" or "shot"
-	return impact, attack, kind
+	if Toggles.AutoStrike.Value and progress < -Options.ClearDepth.Value and incoming then return impact, attack, "clear" end
+	local passTarget = passOpportunity(impact)
+	if passTarget then
+		local profile = modeProfile(detectedTeamSize())
+		local passMetric = profile.actions.pass
+		local passThreshold = Options.PassShotThreshold.Value - profile.opponentCommitRate * 0.1
+		if passMetric.samples >= 3 then passThreshold -= passMetric.average * 0.08 end
+		passThreshold = math.clamp(passThreshold, 0.55, 0.95)
+		if not Toggles.AutoStrike.Value or alignment < passThreshold then return impact, nil, "pass", passTarget end
+	end
+	if Toggles.AutoStrike.Value and alignment >= adaptiveShotAlignment() then return impact, attack, "shot" end
+	return nil
 end
 
 local function dribbleSetup(st)
@@ -587,6 +726,7 @@ end
 local function drive(c)
 	local me = live.me
 	if not me then resetControlState() return end
+	if not Toggles.NextoBot or not Toggles.AutoSpeedFlip or not Toggles.AutoPass then return end
 	if Library.Unloaded then return end
 	if controlSource ~= live.source or (controlTick and live.tick < controlTick) then
 		resetControlState()
@@ -602,9 +742,34 @@ local function drive(c)
 		resetControlState()
 	end
 	if Toggles.NextoBot.Value then
+		if maneuver then
+			if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
+			maneuver = nil
+		end
 		local ok = pcall(nextoControls, c, st)
 		if not ok then
 			nx.job = nil
+		else
+			local threat = demoThreat(st)
+			if threat then
+				local side = threat.side
+				if math.abs(side) < 1 then side = (threat.id or 0) % 2 == 0 and 1 or -1 end
+				c.steer, c.handbrake = side > 0 and -1 or 1, true
+				c.jump, c.boost = false, false
+				return
+			end
+			local target, interceptTime = bestBallTarget(st)
+			local yielding = target and teammateCloser(st, target, interceptTime)
+			if yielding then
+				c.throttle = math.clamp(c.throttle, -0.2, 0.25)
+				c.jump, c.boost, c.handbrake = false, false, false
+			elseif Toggles.AutoPass.Value and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
+				local impact, _, kind, passTarget = strikeOpportunity(st)
+				if impact and kind == "pass" and passTarget and startDodge(st, passTarget, "pass") then
+					strikeReadyAt = now() + 1.0
+					runManeuver(c, st)
+				end
+			end
 		end
 		return
 	end
@@ -615,6 +780,7 @@ local function drive(c)
 			if math.abs(side) < 1 then side = (threat.id or 0) % 2 == 0 and 1 or -1 end
 			c.steer = side > 0 and -1 or 1
 			c.handbrake = true
+			lastJumpInput = c.jump == true
 			return
 		end
 	end
@@ -662,11 +828,12 @@ local function drive(c)
 		local aim = attack and vector.dot(vector.normalize(forward), attack) > 0.5 and attack or forward
 		if startDodge(st, st.pos + aim * 100, "flick") then flickReadyAt = now() + 0.8 end
 	end
-	if not maneuver and Toggles.AutoStrike.Value and st.isOnGround and now() >= strikeReadyAt and c.throttle > 0.4 then
-		local impact, attack, kind = strikeOpportunity(st)
-		if impact and not teammateCloser(st, impact, 0.15)
-			and startDodge(st, st.pos + attack * 100, kind) then
-			strikeReadyAt = now() + 1.0
+	if not maneuver and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround
+		and now() >= strikeReadyAt and c.throttle > 0.4 then
+		local impact, attack, kind, passTarget = strikeOpportunity(st)
+		if impact and not teammateCloser(st, impact, 0.15) then
+			local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
+			if target and startDodge(st, target, kind) then strikeReadyAt = now() + 1.0 end
 		end
 	end
 	local contextualHalfFlip = c.throttle > 0.4 and behindBall and intercept
@@ -711,6 +878,7 @@ local function drive(c)
 	if maneuver then
 		local enabled = (maneuver.kind == "flip" and Toggles.AutoFlip.Value)
 			or ((maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value)
+			or (maneuver.kind == "pass" and Toggles.AutoPass.Value)
 			or (maneuver.kind == "flick" and Toggles.AutoFlick.Value)
 			or (maneuver.kind == "wallShot" and Toggles.AutoWallShot.Value)
 			or (maneuver.kind == "halfFlip" and Toggles.AutoHalfFlip.Value)
@@ -742,7 +910,7 @@ local function drive(c)
 end
 
 local actionCategory = {
-	shot = "shot", clear = "shot",
+	shot = "shot", clear = "shot", pass = "pass",
 	flip = "challenge", fastAerial = "challenge", halfFlip = "challenge",
 	flick = "challenge", wallShot = "challenge",
 	speedFlip = "speedFlip", waveDash = "waveDash",
@@ -761,6 +929,7 @@ local function beginLearningTrial(activeManeuver)
 		tick = live.tick,
 		ballVelocity = ball.vel,
 		attack = attackDirection(),
+		targetDirection = activeManeuver.targetDirection,
 		distance = vector.magnitude(flat(ball.pos - state.pos)),
 		speed = vector.magnitude(flat(state.vel)),
 	}
@@ -773,9 +942,10 @@ local function finishLearningTrial(trial)
 	if not me or not ball then return end
 	local state = stateOf(me.car)
 	local reward
-	if trial.category == "shot" and trial.attack then
-		local before = vector.dot(trial.ballVelocity, trial.attack)
-		local after = vector.dot(ball.vel, trial.attack)
+	if (trial.category == "shot" and trial.attack) or (trial.category == "pass" and trial.targetDirection) then
+		local direction = trial.category == "shot" and trial.attack or trial.targetDirection
+		local before = vector.dot(trial.ballVelocity, direction)
+		local after = vector.dot(ball.vel, direction)
 		reward = unitValue((after - before) / math.max(math.abs(before), math.abs(after), 1))
 	elseif trial.category == "waveDash" or trial.category == "speedFlip" then
 		local speed = vector.magnitude(flat(state.vel))
@@ -798,13 +968,18 @@ local function observeOpponentPressure()
 	local ball = live and live.ball and live.ball.body
 	if not me or not ball or me.team == nil then return end
 	local ownDistance, opponentDistance = math.huge, math.huge
+	local ownNear, opponentNear = 0, 0
+	local futureBall = ball.pos + ball.vel * 0.35
 	for _, entry in live.cars do
 		if entry.car and not entry.car.isDemoed then
 			local distance = vector.magnitude(flat(ball.pos - entry.car.body.pos))
+			local futureDistance = vector.magnitude(flat(futureBall - (entry.car.body.pos + entry.car.body.vel * 0.35)))
 			if entry.team == me.team then
 				ownDistance = math.min(ownDistance, distance)
+				if futureDistance < 650 then ownNear += 1 end
 			elseif entry.team ~= nil then
 				opponentDistance = math.min(opponentDistance, distance)
+				if futureDistance < 650 then opponentNear += 1 end
 			end
 		end
 	end
@@ -814,6 +989,15 @@ local function observeOpponentPressure()
 	local rate = 1 / math.min(profile.pressureSamples, 8)
 	local observedPressure = opponentDistance < ownDistance and 1 or 0
 	profile.opponentPressure += (observedPressure - profile.opponentPressure) * rate
+	if detectedTeamSize() > 1 then
+		profile.coordinationSamples += 1
+		local coordinationRate = 1 / math.min(profile.coordinationSamples, 12)
+		local teamDoubleCommit = ownNear > 1 and 1 or 0
+		local opponentDoubleCommit = opponentNear > 1 and 1 or 0
+		profile.teamCommitRate = math.clamp(profile.teamCommitRate + (teamDoubleCommit - profile.teamCommitRate) * coordinationRate, 0, 1)
+		profile.opponentCommitRate = math.clamp(profile.opponentCommitRate + (opponentDoubleCommit - profile.opponentCommitRate) * coordinationRate, 0, 1)
+		learnedDoubleCommitRate[detectedTeamSize()] = profile.teamCommitRate
+	end
 	learningDirty = true
 end
 
@@ -938,8 +1122,9 @@ local function draw()
 				if on then
 					m += 1
 					local t = text(m)
-					t.Text = string.format("%d", math.floor(e.car.boost))
-					t.Color = (me and e.team == me.team) and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
+					local allied = me and e.team == me.team
+					t.Text = string.format("%s %d", allied and "TIME" or "RIVAL", math.floor(e.car.boost))
+					t.Color = allied and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
 					t.Position, t.Visible = s, true
 				end
 			end
@@ -1139,6 +1324,8 @@ Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Too
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
 Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0,
 	Tooltip = "Team size is detected automatically: solo, duo, or trio. Trio uses a wider margin to reduce double commits." })
+Assist:AddToggle("TeamCoordination", { Text = "Yield when teammate reaches first", Default = true,
+	Tooltip = "Uses team IDs and predicted routes to avoid double commits. The learned margin is separate for solo, duo, and trio." })
 Assist:AddToggle("AutoRecover", { Text = "Auto air recovery", Default = true, Tooltip = "Lands you on wheels when you're not touching air controls" })
 local Strike = Tabs.Main:AddRightGroupbox("Shot mechanics", "target")
 Strike:AddToggle("AutoStrike", { Text = "Smart shot / defensive clear", Default = true, Tooltip = "When you drive into a clean ball line, flips toward the opponent goal; clears an incoming ball from your half" })
@@ -1147,6 +1334,12 @@ Strike:AddSlider("ShotAlignment", { Text = "Shot heading alignment", Default = 0
 Strike:AddSlider("ShotLineTolerance", { Text = "Shot line side tolerance (uu)", Default = 80, Min = 30, Max = 180, Rounding = 0 })
 Strike:AddSlider("ClearDepth", { Text = "Clear trigger depth (uu)", Default = 1000, Min = 0, Max = 3000, Rounding = 0 })
 Strike:AddSlider("ClearIncomingSpeed", { Text = "Clear incoming speed (uu/s)", Default = 300, Min = 100, Max = 900, Rounding = 0 })
+Strike:AddToggle("AutoPass", { Text = "Pass to an open teammate", Default = true,
+	Tooltip = "In duo or trio, chooses a forward teammate with an open lane when the shot angle is poor. A closer teammate still gets priority." })
+Strike:AddSlider("PassMinProgress", { Text = "Pass minimum forward gain (uu)", Default = 180, Min = 50, Max = 600, Rounding = 0 })
+Strike:AddSlider("PassMaxRange", { Text = "Pass maximum range (uu)", Default = 1200, Min = 500, Max = 1800, Rounding = 0 })
+Strike:AddSlider("PassLaneClearance", { Text = "Pass lane clearance (uu)", Default = 150, Min = 70, Max = 300, Rounding = 0 })
+Strike:AddSlider("PassShotThreshold", { Text = "Pass when shot alignment is below", Default = 0.82, Min = 0.55, Max = 0.95, Rounding = 2 })
 Strike:AddToggle("AutoFlick", { Text = "Flick on jump", Default = true, Tooltip = "Press jump with the ball controlled above the hood to execute a forward flick" })
 Strike:AddSlider("FlickFrontMax", { Text = "Flick front limit (uu)", Default = 190, Min = 80, Max = 300, Rounding = 0 })
 Strike:AddSlider("FlickSideMax", { Text = "Flick side limit (uu)", Default = 80, Min = 30, Max = 150, Rounding = 0 })
@@ -1162,25 +1355,8 @@ Vis:AddSlider("PathSeconds", { Text = "Prediction seconds", Default = 2, Min = 1
 Tabs.Visuals:AddRightGroupbox("Cars", "car"):AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
-local AUTOLOAD_FLAG = DIR .. "autoload"
-local embeddedSource = sharedEnv.CatwareTurboSoccerSource
-local LOADER
-if type(embeddedSource) == "string" then
-	local encodedSource = string.format("%q", embeddedSource)
-	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
-		.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
-		.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-		.. 'pcall(fn)'
-else
-	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
-		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
-		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-		.. 'pcall(fn)'
-end
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
-	Tooltip = "Tunes shot alignment, aerial range, wave dash timing, and kickoff timing from local outcomes and opponent pressure." })
+	Tooltip = "Learns shot/pass outcomes, aerial challenges, wave dash timing, kickoff timing, opponent pressure, and team double commits. Saves separate solo, duo, and trio profiles locally." })
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfile(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
 	Tooltip = "Queues this script for teleports. Reconnects after a kick require running the bootstrap again." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
@@ -1204,34 +1380,6 @@ Toggles.AutoLoad:OnChanged(function(on)
 end)
 Toggles.AutoLearn:OnChanged(function(on)
 	if not on then saveLearning() end
-end)
-local queued = false
-local function queueTeleport(code)
-	local env = getgenv()
-	local direct = queue_on_teleport or queueonteleport or env.queue_on_teleport or env.queueonteleport
-	if type(direct) == "function" then
-		local ok, result = pcall(direct, code)
-		if ok and result ~= false then return true end
-	end
-	local synEnv = env.syn or syn
-	if type(synEnv) == "table" and type(synEnv.queue_on_teleport) == "function" then
-		local ok, result = pcall(synEnv.queue_on_teleport, code)
-		if not ok or result == false then
-			ok, result = pcall(synEnv.queue_on_teleport, synEnv, code)
-		end
-		if ok and result ~= false then return true end
-	end
-	return false
-end
-local teleportConn = LP.OnTeleport:Connect(function(state)
-	if state == Enum.TeleportState.Started and Toggles.AutoLoad.Value and not queued then
-		queued = queueTeleport(LOADER)
-	elseif state == Enum.TeleportState.Failed then
-		queued = false
-	end
-end)
-local teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(player)
-	if player == LP then queued = false end
 end)
 
 getgenv().CatwareTurboSoccerUnload = function() Library:Unload() end
