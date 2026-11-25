@@ -153,6 +153,14 @@ local function angleTo(rot, dir)
 	return math.atan2(vector.dot(dir, rot.right), vector.dot(dir, rot.forward))
 end
 
+local function shouldPowerSlide(st, angle, distance)
+	if not Toggles.AutoPowerslide or not Toggles.AutoPowerslide.Value then return false end
+	if not Options.PowerslideMinSpeed or vector.magnitude(flat(st.vel)) < Options.PowerslideMinSpeed.Value then return false end
+	if not Options.PowerslideSteer then return false end
+	if math.abs(angle) < Options.PowerslideSteer.Value then return false end
+	return distance == nil or not Options.PowerslideMinDistance or distance >= Options.PowerslideMinDistance.Value
+end
+
 local function now() return (live and live.tick or 0) * TICK end
 
 local function orient(c, st, f)
@@ -202,6 +210,13 @@ local function bestBallTarget(st)
 	return best, bestTime, bestDistance
 end
 
+local function maneuverPower(kind)
+	local option = kind == "flick" and Options.FlickPower
+		or (kind == "shot" or kind == "clear") and Options.ShotPower
+		or kind == "pass" and Options.PassPower
+	return option and math.clamp(option.Value, 0.1, 1) or 1
+end
+
 local function startDodge(st, target, kind, full3D, receiverIndexOverride)
 	if maneuver or not st.isOnGround then return false end
 	local dir = target - st.pos
@@ -231,8 +246,9 @@ local function startDodge(st, target, kind, full3D, receiverIndexOverride)
 			end
 		end
 	end
+	kind = kind or "flip"
 	maneuver = {
-		kind = kind or "flip", t0 = now(), pitch = p / m, yaw = y / m,
+		kind = kind, power = maneuverPower(kind), t0 = now(), pitch = p / m, yaw = y / m,
 		heading = vector.normalize(heading), targetDirection = vector.normalize(flat(dir)), targetPosition = target,
 		receiverIndex = receiverIndex, sawFlip = false,
 	}
@@ -341,7 +357,8 @@ local function runManeuver(c, st)
 
 	if m.kind == "flip" or m.kind == "shot" or m.kind == "pass" or m.kind == "clear" or m.kind == "flick" or m.kind == "wallShot" then
 		if dt > 0.22 then maneuver = nil return false end
-		if m.kind == "clear" or m.kind == "pass" then c.throttle, c.boost = 1, st.boost > 0 end
+		c.throttle = m.power or 1
+		c.boost = st.boost > 15 and (m.power or 1) >= 0.9
 		if dt < 0.08 then
 			c.jump = true
 		elseif dt < 0.13 then
@@ -385,16 +402,24 @@ local function teamInterceptRank(st, target, interceptTime)
 	local myFuture = st.pos + st.vel * t
 	local myDistance = vector.magnitude(flat(target - myFuture))
 	local mode = detectedTeamSize()
-	local marginScale = mode == 3 and 1.5 or mode == 2 and 1 or 0
-	local margin = Options.TeammateMargin.Value * marginScale + learnedDoubleCommitRate[mode] * 35
+	local marginScale = mode == 3 and 1.1 or mode == 2 and 1 or 0
+	local configuredMargin = Options.TeammateMargin.Value
+	local minimumMargin = mode == 3 and 100 or mode == 2 and 85 or 0
+	local margin = math.max(configuredMargin, minimumMargin) * marginScale
+		+ math.clamp(learnedDoubleCommitRate[mode] * 15, 0, 15)
 	local rank, leader, leaderDistance = 1, nil, math.huge
 	for _, e in live.cars do
 		if e ~= me and e.team == me.team and e.car and not e.car.isDemoed then
 			local other = stateOf(e.car)
+			local toTarget = flat(target - other.pos)
+			local routeLength = vector.magnitude(toTarget)
+			local direction = routeLength > 1 and vector.normalize(toTarget) or vector.create(0, 0, 0)
 			local distance = vector.magnitude(flat(target - (other.pos + other.vel * t)))
-			local leads = distance + margin < myDistance
-			local winsTie = math.abs(distance - myDistance) <= margin and e.index ~= nil and me.index ~= nil and e.index < me.index
-			if leads or winsTie then
+			local approachSpeed = vector.dot(flat(other.vel), direction)
+			local facing = vector.magnitude(flat(other.rot.forward)) > 0.01
+				and vector.dot(vector.normalize(flat(other.rot.forward)), direction) or -1
+			local committed = routeLength < 300 or approachSpeed > 100 or (vector.magnitude(flat(other.vel)) < 100 and facing > 0.65)
+			if committed and distance + margin < myDistance then
 				rank += 1
 				if distance < leaderDistance then leader, leaderDistance = e, distance end
 			end
@@ -423,16 +448,10 @@ local function applyTeamSupport(c, st, target, rank, leader)
 	if not attack then return false end
 	local me = live and live.me
 	local lateral = vector.create(attack.y, -attack.x, 0)
-	local side
-	if leader and leader.car then
-		local leaderOffset = vector.dot(stateOf(leader.car).pos - st.pos, lateral)
-		side = leaderOffset >= 0 and -1 or 1
-	else
-		side = (math.floor(tonumber(me and me.index) or 1) % 2 == 0) and 1 or -1
-	end
+	local side = (math.floor(tonumber(me and me.index) or 1) % 2 == 0) and 1 or -1
 	local mode = detectedTeamSize()
-	local baseDepth = Options.TeamSupportDepth.Value
-	local depth = mode == 3 and rank >= 3 and baseDepth * 2 or baseDepth
+	local baseDepth = math.min(Options.TeamSupportDepth.Value, 260)
+	local depth = mode == 3 and rank >= 3 and baseDepth * 1.35 or baseDepth
 	local lateralSpacing = Options.TeamSupportOffset.Value * (mode == 3 and 1.5 or 1)
 	local support = flat(target) - attack * depth + lateral * side * lateralSpacing
 	local direction = flat(support - st.pos)
@@ -450,7 +469,7 @@ local function applyTeamSupport(c, st, target, rank, leader)
 	local angle = angleTo(st.rot, direction)
 	c.throttle = math.clamp(distance / 350, 0.25, 1)
 	c.steer = clamp1(angle / (math.pi / 2))
-	c.handbrake = Toggles.AutoPowerslide.Value and math.abs(angle) >= Options.PowerslideSteer.Value
+	c.handbrake = shouldPowerSlide(st, angle, distance)
 	c.boost = st.boost > 15 and distance > 500 and math.abs(angle) < 0.45
 	return true
 end
@@ -526,7 +545,7 @@ local function applyPassReceiveControls(c, st, target, interceptTime)
 	c.throttle = math.clamp(distance / 300, 0.3, 1)
 	c.steer = clamp1(angle / (math.pi / 2))
 	c.boost = st.boost > 15 and distance > 450 and math.abs(angle) < 0.45
-	c.handbrake = Toggles.AutoPowerslide.Value and math.abs(angle) >= Options.PowerslideSteer.Value
+	c.handbrake = shouldPowerSlide(st, angle, distance)
 	return true
 end
 
@@ -737,6 +756,45 @@ local function passOpportunity(impact)
 	return bestTarget, bestReceiverIndex
 end
 
+local function shotLaneBlocked(impact, attack)
+	local me = live and live.me
+	if not me or not attack then return false end
+	for _, entry in live.cars do
+		if entry ~= me and entry.team ~= nil and entry.team ~= me.team and entry.car and not entry.car.isDemoed then
+			local other = stateOf(entry.car)
+			local future = flat(other.pos + other.vel * 0.35 - impact)
+			local along = vector.dot(future, attack)
+			if along > 100 and along <= Options.ShotLaneRange.Value then
+				local lateral = vector.magnitude(future - attack * along)
+				if lateral <= Options.ShotLaneClearance.Value then return true end
+			end
+		end
+	end
+	return false
+end
+
+local function applyShotApproachControls(c, st, intercept, interceptDistance)
+	if maneuver or not Toggles.AutoStrike.Value or not st.isOnGround or not intercept or not attackDirection() then return false end
+	if not interceptDistance or interceptDistance > 500 then return false end
+	local attack = attackDirection()
+	if shotLaneBlocked(intercept, attack) then return false end
+	local forward = flat(st.rot.forward)
+	if vector.magnitude(forward) < 0.01 then return false end
+	local alignment = vector.dot(vector.normalize(forward), attack)
+	if alignment >= 0.72 then return false end
+	local setup = flat(intercept) - attack * Options.ShotApproachOffset.Value
+	local direction = flat(setup - st.pos)
+	local distance = vector.magnitude(direction)
+	if distance < 90 or distance > 360 then return false end
+	local angle = angleTo(st.rot, direction)
+	c.throttle = math.clamp(distance / 300, 0.25, 0.75)
+	c.steer = clamp1(angle / (math.pi / 2))
+	c.jump = false
+	c.boost = st.boost > 25 and distance > 280 and math.abs(angle) < 0.25
+	c.handbrake = shouldPowerSlide(st, angle, distance)
+	return true
+end
+
 local function strikeOpportunity(st)
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
@@ -766,10 +824,15 @@ local function strikeOpportunity(st)
 			passThreshold += profile.peerPassQuality * 0.04
 			passThreshold -= profile.peerPassMisses / peerPassOutcomes * 0.03
 		end
-		passThreshold = math.clamp(passThreshold, 0.55, 0.95)
-		if not Toggles.AutoStrike.Value or alignment < passThreshold then return impact, nil, "pass", passTarget, passReceiverIndex end
+		passThreshold = math.clamp(math.min(passThreshold, 0.68), 0.3, 0.68)
+		local blocked = shotLaneBlocked(impact, attack)
+		if blocked or alignment < passThreshold then return impact, nil, "pass", passTarget, passReceiverIndex end
 	end
-	if Toggles.AutoStrike.Value and alignment >= adaptiveShotAlignment() then return impact, attack, "shot" end
+	local blocked = shotLaneBlocked(impact, attack)
+	local shotThreshold = math.clamp(math.min(adaptiveShotAlignment(), 0.72), 0.55, 0.72)
+	if Toggles.AutoStrike.Value and alignment >= shotThreshold and (not blocked or not passTarget) then
+		return impact, attack, "shot"
+	end
 	return nil
 end
 
@@ -886,7 +949,7 @@ local function routeToBoostPad(c, st)
 	c.steer = clamp1(angle / (math.pi / 2))
 	c.boost = st.boost > 0 and distance > 250 and math.abs(angle) < 0.45
 	c.jump = false
-	if Toggles.AutoPowerslide.Value and math.abs(angle) >= Options.PowerslideSteer.Value then c.handbrake = true end
+	c.handbrake = shouldPowerSlide(st, angle, distance)
 	return true
 end
 
@@ -1022,6 +1085,7 @@ local function drive(c)
 	if Toggles.NextoBot.Value then
 		if maneuver then
 			if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
+			if (maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value and runManeuver(c, st) then return end
 			if maneuver.kind == "flick" and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value and runManeuver(c, st) then return end
 			maneuver = nil
 		end
@@ -1029,6 +1093,7 @@ local function drive(c)
 		if not ok then
 			nx.job = nil
 		else
+			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
 			local threat = demoThreat(st)
 			if threat then
 				local side = threat.side
@@ -1048,11 +1113,13 @@ local function drive(c)
 					c.jump, c.boost, c.handbrake = false, false, false
 				end
 			else
-				if Toggles.AutoPass.Value and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
-					local impact, _, kind, passTarget, passReceiverIndex = strikeOpportunity(st)
-					if impact and kind == "pass" and passTarget and startDodge(st, passTarget, "pass", false, passReceiverIndex) then
+				if (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
+					local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st)
+					local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
+					if impact and target and kind and not teammateCloser(st, impact, 0.15)
+						and startDodge(st, target, kind, false, passReceiverIndex) then
 						strikeReadyAt = now() + 1.0
-						runManeuver(c, st)
+						if runManeuver(c, st) then return end
 					end
 				end
 				if not maneuver and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value
@@ -1064,6 +1131,7 @@ local function drive(c)
 						runManeuver(c, st)
 					end
 				end
+				if not maneuver and applyShotApproachControls(c, st, target, target and vector.magnitude(flat(target - st.pos)) or nil) then return end
 			if not yielding and applyAirDribbleControls(c, st) then return end
 			end
 		end
@@ -1150,6 +1218,10 @@ local function drive(c)
 			if target and startDodge(st, target, kind, false, passReceiverIndex) then strikeReadyAt = now() + 1.0 end
 		end
 	end
+	if not yielding and applyShotApproachControls(c, st, intercept, interceptDistance) then
+		lastJumpInput = c.jump == true
+		return
+	end
 	local contextualHalfFlip = c.throttle > 0.4 and behindBall and intercept
 		and not teammateCloser(st, intercept, interceptTime)
 	if not maneuver and Toggles.AutoHalfFlip.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= halfFlipReadyAt
@@ -1213,8 +1285,7 @@ local function drive(c)
 		return
 	end
 
-	if Toggles.AutoPowerslide.Value and st.isOnGround and st.rot.up.z > 0.7 and c.throttle > 0.2
-		and math.abs(c.steer) >= Options.PowerslideSteer.Value then
+	if st.rot.up.z > 0.7 and c.throttle > 0.2 and shouldPowerSlide(st, c.steer) then
 		c.handbrake = true
 	end
 	local idleAir = math.abs(c.pitch) + math.abs(c.yaw) + math.abs(c.roll) < 0.1
@@ -1826,8 +1897,10 @@ Mechanics:AddSlider("WaveDashDuration", { Text = "Wave dash input duration (s)",
 Mechanics:AddToggle("AutoWallShot", { Text = "Wall shot", Default = true, Tooltip = "When grounded on a wall, flips into a ball directly ahead in the wall plane" })
 Mechanics:AddSlider("WallShotRange", { Text = "Wall shot range (uu)", Default = 350, Min = 120, Max = 700, Rounding = 0 })
 Mechanics:AddSlider("WallShotSide", { Text = "Wall shot side tolerance (uu)", Default = 130, Min = 40, Max = 260, Rounding = 0 })
-Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default = true, Tooltip = "Adds handbrake on grounded turns above the steer threshold" })
-Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.65, Min = 0.3, Max = 1, Rounding = 2 })
+Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default = false, Tooltip = "Only slides at speed through a large turn; disable to keep traction" })
+Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.84, Min = 0.3, Max = 1, Rounding = 2 })
+Mechanics:AddSlider("PowerslideMinSpeed", { Text = "Powerslide minimum speed", Default = 650, Min = 0, Max = 1500, Rounding = 0 })
+Mechanics:AddSlider("PowerslideMinDistance", { Text = "Powerslide minimum target distance", Default = 350, Min = 0, Max = 1000, Rounding = 0 })
 Mechanics:AddToggle("AutoDemoEvade", { Text = "Avoid incoming demos", Default = false, Tooltip = "Steers away when an opponent is projected to collide with your car" })
 Mechanics:AddSlider("DemoEvadeRadius", { Text = "Demo evasion radius (uu)", Default = 175, Min = 100, Max = 300, Rounding = 0 })
 Mechanics:AddToggle("AutoBoostRoute", { Text = "Route to active boost pads", Default = false, Tooltip = "When grounded, low on boost, and away from the ball, steers to a reachable active pad. Nexto already handles pad routes." })
@@ -1836,24 +1909,27 @@ Mechanics:AddSlider("BoostRouteMaxRange", { Text = "Boost pad route range (uu)",
 Mechanics:AddSlider("BoostRouteBallBuffer", { Text = "Keep this far from ball (uu)", Default = 550, Min = 250, Max = 900, Rounding = 0 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
-Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0,
-	Tooltip = "Team size is detected automatically: solo, duo, or trio. Trio uses a wider margin to reduce double commits." })
+Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 90, Min = 0, Max = 150, Rounding = 0,
+	Tooltip = "Yields only when an ally is actually approaching and has a clear projected distance advantage." })
 Assist:AddToggle("TeamCoordination", { Text = "Yield when teammate reaches first", Default = true,
-	Tooltip = "Uses team IDs and predicted routes to avoid double commits. The learned margin is separate for solo, duo, and trio." })
+	Tooltip = "Yields only when an ally is moving into the same intercept and has a clear route advantage; otherwise keeps challenging." })
 Assist:AddToggle("TeamSupportRotation", { Text = "Rotate to support position", Default = true,
 	Tooltip = "When an ally has the better ball route, moves to a spaced position behind the predicted intercept. In trio, the third car holds a deeper line." })
-Assist:AddSlider("TeamSupportDepth", { Text = "Support depth (uu)", Default = 350, Min = 150, Max = 800, Rounding = 0 })
-Assist:AddSlider("TeamSupportOffset", { Text = "Support side spacing (uu)", Default = 220, Min = 0, Max = 500, Rounding = 0 })
+Assist:AddSlider("TeamSupportDepth", { Text = "Support depth (uu)", Default = 220, Min = 100, Max = 800, Rounding = 0 })
+Assist:AddSlider("TeamSupportOffset", { Text = "Support side spacing (uu)", Default = 180, Min = 0, Max = 500, Rounding = 0 })
 Assist:AddToggle("AutoRecover", { Text = "Auto air recovery", Default = true, Tooltip = "Lands you on wheels when you're not touching air controls" })
 local Strike = Tabs.Main:AddRightGroupbox("Shot mechanics", "target")
 Strike:AddToggle("AutoStrike", { Text = "Smart shot / defensive clear", Default = true, Tooltip = "When you drive into a clean ball line, flips toward the opponent goal; clears an incoming ball from your half" })
 Strike:AddToggle("InvertAttackDirection", { Text = "Invert goal direction", Default = false, Tooltip = "Turn on if the shot/clear aim points toward your own goal in this game's team mapping" })
-Strike:AddSlider("ShotAlignment", { Text = "Shot heading alignment", Default = 0.78, Min = 0.5, Max = 0.98, Rounding = 2 })
+Strike:AddSlider("ShotAlignment", { Text = "Shot heading alignment", Default = 0.66, Min = 0.5, Max = 0.98, Rounding = 2 })
 Strike:AddSlider("ShotLineTolerance", { Text = "Shot line side tolerance (uu)", Default = 80, Min = 30, Max = 180, Rounding = 0 })
+Strike:AddSlider("ShotLaneRange", { Text = "Shot lane check range (uu)", Default = 900, Min = 400, Max = 1800, Rounding = 0 })
+Strike:AddSlider("ShotLaneClearance", { Text = "Shot lane clearance (uu)", Default = 170, Min = 80, Max = 350, Rounding = 0 })
+Strike:AddSlider("ShotApproachOffset", { Text = "Behind-ball setup distance (uu)", Default = 180, Min = 80, Max = 350, Rounding = 0 })
 Strike:AddSlider("ClearDepth", { Text = "Clear trigger depth (uu)", Default = 1000, Min = 0, Max = 3000, Rounding = 0 })
 Strike:AddSlider("ClearIncomingSpeed", { Text = "Clear incoming speed (uu/s)", Default = 300, Min = 100, Max = 900, Rounding = 0 })
 Strike:AddToggle("AutoPass", { Text = "Pass to an open teammate", Default = true,
-	Tooltip = "In duo or trio, leads an open teammate, checks the lane and receiver space, and learns timing from completed team receptions." })
+	Tooltip = "Keeps clean shots first. Passes when the shot lane is blocked or the shot aim is poor, after checking the receiver and lane." })
 Strike:AddToggle("AutoPassReceive", { Text = "Receive incoming passes", Default = true,
 	Tooltip = "Moves to a closing ball path only when no ally has a better route and no player already occupies the receive point." })
 Strike:AddSlider("PassReceiveRange", { Text = "Pass reception radius (uu)", Default = 450, Min = 180, Max = 900, Rounding = 0 })
@@ -1863,7 +1939,7 @@ Strike:AddSlider("PassMinProgress", { Text = "Pass minimum forward gain (uu)", D
 Strike:AddSlider("PassMaxRange", { Text = "Pass maximum range (uu)", Default = 1200, Min = 500, Max = 1800, Rounding = 0 })
 Strike:AddSlider("PassLaneClearance", { Text = "Pass lane clearance (uu)", Default = 150, Min = 70, Max = 300, Rounding = 0 })
 Strike:AddSlider("PassLeadTime", { Text = "Pass receiver lead time (s)", Default = 0.35, Min = 0.1, Max = 1.2, Rounding = 2 })
-Strike:AddSlider("PassShotThreshold", { Text = "Pass when shot alignment is below", Default = 0.82, Min = 0.55, Max = 0.95, Rounding = 2 })
+Strike:AddSlider("PassShotThreshold", { Text = "Pass when shot alignment is below", Default = 0.52, Min = 0.3, Max = 0.7, Rounding = 2 })
 Strike:AddToggle("AutoFlick", { Text = "Flick on jump", Default = true, Tooltip = "Flicks a settled hood dribble toward a clear shot or open teammate; otherwise keeps the car's safe forward line" })
 Strike:AddToggle("AutoFlickPossession", { Text = "Auto-flick on controlled possession", Default = false,
 	Tooltip = "Flicks only when the ball is settled above the hood and no teammate has the better challenge route" })
@@ -1872,6 +1948,9 @@ Strike:AddSlider("FlickSideMax", { Text = "Flick side limit (uu)", Default = 80,
 Strike:AddSlider("FlickHeightMin", { Text = "Flick minimum height (uu)", Default = 20, Min = 0, Max = 100, Rounding = 0 })
 Strike:AddSlider("FlickHeightMax", { Text = "Flick maximum height (uu)", Default = 180, Min = 80, Max = 300, Rounding = 0 })
 Strike:AddSlider("FlickRelativeSpeed", { Text = "Flick max relative speed (uu/s)", Default = 500, Min = 100, Max = 1200, Rounding = 0 })
+Strike:AddSlider("FlickPower", { Text = "Flick throttle / boost power", Default = 0.45, Min = 0.1, Max = 1, Rounding = 2 })
+Strike:AddSlider("ShotPower", { Text = "Shot throttle / boost power", Default = 0.9, Min = 0.1, Max = 1, Rounding = 2 })
+Strike:AddSlider("PassPower", { Text = "Pass throttle / boost power", Default = 0.62, Min = 0.1, Max = 1, Rounding = 2 })
 Strike:AddToggle("AutoAirFollow", { Text = "Air intercept follow", Default = true, Tooltip = "While you hold boost in the air, aims at the predicted ball intercept when a teammate is not closer" })
 Strike:AddToggle("AutoAirDribble", { Text = "Air dribble control", Default = false,
 	Tooltip = "When the ball is close, ahead, and above the car, controls the approach from behind the ball toward the attacking side" })
