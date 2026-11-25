@@ -179,6 +179,7 @@ local function recover(c, st, heading)
 end
 
 local maneuver
+local aggressiveLeadMode = false
 local airDribbleActive = false
 local airDribbleLearningAction = { kind = "airDribble" }
 local lastJumpInput = false
@@ -450,7 +451,7 @@ local function applyTeamSupport(c, st, target, rank, leader)
 	local lateral = vector.create(attack.y, -attack.x, 0)
 	local side = (math.floor(tonumber(me and me.index) or 1) % 2 == 0) and 1 or -1
 	local mode = detectedTeamSize()
-	local baseDepth = math.min(Options.TeamSupportDepth.Value, 260)
+	local baseDepth = Options.TeamSupportDepth.Value
 	local depth = mode == 3 and rank >= 3 and baseDepth * 1.35 or baseDepth
 	local lateralSpacing = Options.TeamSupportOffset.Value * (mode == 3 and 1.5 or 1)
 	local support = flat(target) - attack * depth + lateral * side * lateralSpacing
@@ -549,8 +550,9 @@ local function applyPassReceiveControls(c, st, target, interceptTime)
 	return true
 end
 
-local function applyAirDribbleControls(c, st)
-	if not Toggles.AutoAirDribble or not Toggles.AutoAirDribble.Value or st.isOnGround or st.isFlipping or maneuver then return false end
+local function applyAirDribbleControls(c, st, force)
+	if (not force and (not Toggles.AutoAirDribble or not Toggles.AutoAirDribble.Value))
+		or st.isOnGround or st.isFlipping or maneuver then return false end
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
 	if not ball or not attack then return false end
@@ -795,7 +797,7 @@ local function applyShotApproachControls(c, st, intercept, interceptDistance)
 	return true
 end
 
-local function strikeOpportunity(st)
+local function strikeOpportunity(st, forceAttack)
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
 	local impact = nearBall(st, Options.FlipRange.Value)
@@ -809,6 +811,7 @@ local function strikeOpportunity(st)
 	local incoming = vector.dot(ball.vel, attack) < -Options.ClearIncomingSpeed.Value
 	if Toggles.AutoStrike.Value and progress < -Options.ClearDepth.Value and incoming then return impact, attack, "clear" end
 	local passTarget, passReceiverIndex = passOpportunity(impact)
+	if forceAttack then return impact, attack, "shot" end
 	if passTarget then
 		local profile = modeProfile(detectedTeamSize())
 		local passMetric = profile.actions.pass
@@ -836,9 +839,12 @@ local function strikeOpportunity(st)
 	return nil
 end
 
-local function flickTarget(st)
+local function flickTarget(st, forceAttack)
+	local goal = attackDirection()
+	if forceAttack and goal then return st.pos + goal * 100, "flick" end
 	local _, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st)
-	if kind == "pass" and passTarget then return passTarget, "pass", passReceiverIndex end
+	if kind == "pass" and passTarget and not forceAttack then return passTarget, "pass", passReceiverIndex end
+	if forceAttack and attack then return st.pos + attack * 100, "flick" end
 	if (kind == "shot" or kind == "clear") and attack then return st.pos + attack * 100, "flick" end
 	local forward = flat(st.rot.forward)
 	local goal = attackDirection()
@@ -1087,7 +1093,7 @@ local function drive(c)
 			if Toggles.NextoTacticalAssists and Toggles.NextoTacticalAssists.Value then
 				if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
 				if (maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value and runManeuver(c, st) then return end
-				if maneuver.kind == "flick" and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value and runManeuver(c, st) then return end
+			if maneuver.kind == "flick" and Toggles.AutoFlick.Value and (Toggles.AutoFlickPossession.Value or aggressiveLeadMode) and runManeuver(c, st) then return end
 			end
 			maneuver = nil
 		end
@@ -1103,13 +1109,38 @@ local function drive(c)
 				c.jump, c.boost = false, false
 				return
 			end
-			if not Toggles.NextoTacticalAssists or not Toggles.NextoTacticalAssists.Value then return end
+			if not Toggles.NextoTacticalAssists or not Toggles.NextoTacticalAssists.Value then
+				if aggressiveLeadMode then
+					local target, interceptTime, interceptDistance = bestBallTarget(st)
+					local yielding = not aggressiveLeadMode and target and teammateCloser(st, target, interceptTime) or false
+					if not yielding and not st.isOnGround and applyAirDribbleControls(c, st, true) then return end
+					local aerialRange = adaptiveAerialRange() + 250
+					if not yielding and Toggles.AutoFastAerial.Value and st.isOnGround and now() >= aerialReadyAt
+						and target and interceptTime <= Options.AerialMaxTime.Value and interceptDistance <= aerialRange
+						and target.z - st.pos.z >= Options.AerialHeight.Value * 0.7 and st.boost > 0 then
+						if startFastAerial(st, target) then
+							aerialReadyAt = now() + 2.5
+							if runManeuver(c, st) then return end
+						end
+					end
+					if not yielding and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value)
+						and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
+						local impact, attack, kind = strikeOpportunity(st, true)
+						if impact and attack and kind and startDodge(st, st.pos + attack * 100, kind, false)
+							and runManeuver(c, st) then
+							strikeReadyAt = now() + 1.0
+							return
+						end
+					end
+				end
+				return
+			end
 			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
 			local receiveTarget, receiveTime = incomingPassTarget(st)
 			if receiveTarget and applyPassReceiveControls(c, st, receiveTarget, receiveTime) then return end
 			local target, interceptTime = bestBallTarget(st)
 			local yielding, teamRank, teamLeader = false, 1, nil
-			if target then yielding, teamRank, teamLeader = teammateCloser(st, target, interceptTime) end
+			if target and not aggressiveLeadMode then yielding, teamRank, teamLeader = teammateCloser(st, target, interceptTime) end
 			if yielding then
 				if not applyTeamSupport(c, st, target, teamRank, teamLeader) then
 					c.throttle = math.clamp(c.throttle, -0.2, 0.25)
@@ -1117,17 +1148,17 @@ local function drive(c)
 				end
 			else
 				if (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
-					local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st)
+					local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, aggressiveLeadMode)
 					local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
-					if impact and target and kind and not teammateCloser(st, impact, 0.15)
+					if impact and target and kind and (aggressiveLeadMode or not teammateCloser(st, impact, 0.15))
 						and startDodge(st, target, kind, false, passReceiverIndex) then
 						strikeReadyAt = now() + 1.0
 						if runManeuver(c, st) then return end
 					end
 				end
-				if not maneuver and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value
+				if not maneuver and Toggles.AutoFlick.Value and (Toggles.AutoFlickPossession.Value or aggressiveLeadMode)
 					and st.isOnGround and now() >= flickReadyAt and dribbleSetup(st) then
-					local flick, kind, receiverIndex = flickTarget(st)
+					local flick, kind, receiverIndex = flickTarget(st, aggressiveLeadMode)
 					if flick and startDodge(st, flick, kind or "flick", false, receiverIndex) then
 						flickReadyAt = now() + 0.8
 						if kind == "pass" then strikeReadyAt = now() + 1.0 end
@@ -1135,7 +1166,7 @@ local function drive(c)
 					end
 				end
 				if not maneuver and applyShotApproachControls(c, st, target, target and vector.magnitude(flat(target - st.pos)) or nil) then return end
-			if not yielding and applyAirDribbleControls(c, st) then return end
+			if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then return end
 			end
 		end
 		return
@@ -1182,16 +1213,16 @@ local function drive(c)
 	end
 	local intercept, interceptTime, interceptDistance = bestBallTarget(st)
 	local yielding, teamRank, teamLeader = false, 1, nil
-	if intercept then yielding, teamRank, teamLeader = teammateCloser(st, intercept, interceptTime) end
+	if intercept and not aggressiveLeadMode then yielding, teamRank, teamLeader = teammateCloser(st, intercept, interceptTime) end
 	if yielding and applyTeamSupport(c, st, intercept, teamRank, teamLeader) then
 		lastJumpInput = c.jump == true
 		return
 	end
-	if not yielding and applyAirDribbleControls(c, st) then
+	if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then
 		lastJumpInput = c.jump == true
 		return
 	end
-	local aerialRange = adaptiveAerialRange()
+	local aerialRange = adaptiveAerialRange() + (aggressiveLeadMode and 250 or 0)
 	local forward, toIntercept = flat(st.rot.forward), intercept and flat(intercept - st.pos)
 	local behindBall = false
 	if intercept and toIntercept and vector.magnitude(toIntercept) > Options.FlipRange.Value
@@ -1204,10 +1235,10 @@ local function drive(c)
 		and manualHalfFlip and startHalfFlip(st) then
 		halfFlipReadyAt = now() + 1.2
 	end
-	if not maneuver and Toggles.AutoFlick.Value and (jumpPressed or Toggles.AutoFlickPossession.Value)
+	if not maneuver and Toggles.AutoFlick.Value and (jumpPressed or Toggles.AutoFlickPossession.Value or aggressiveLeadMode)
 		and st.isOnGround and now() >= flickReadyAt
 		and dribbleSetup(st) then
-		local target, kind, receiverIndex = flickTarget(st)
+		local target, kind, receiverIndex = flickTarget(st, aggressiveLeadMode)
 		if target and startDodge(st, target, kind or "flick", false, receiverIndex) then
 			flickReadyAt = now() + 0.8
 			if kind == "pass" then strikeReadyAt = now() + 1.0 end
@@ -1215,8 +1246,8 @@ local function drive(c)
 	end
 	if not maneuver and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround
 		and now() >= strikeReadyAt and c.throttle > 0.4 then
-		local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st)
-		if impact and not teammateCloser(st, impact, 0.15) then
+		local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, aggressiveLeadMode)
+		if impact and (aggressiveLeadMode or not teammateCloser(st, impact, 0.15)) then
 			local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
 			if target and startDodge(st, target, kind, false, passReceiverIndex) then strikeReadyAt = now() + 1.0 end
 		end
@@ -1234,7 +1265,7 @@ local function drive(c)
 	if not maneuver and Toggles.AutoFastAerial.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= aerialReadyAt
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
 		and interceptDistance <= aerialRange
-		and intercept.z - st.pos.z >= Options.AerialHeight.Value
+		and intercept.z - st.pos.z >= Options.AerialHeight.Value * (aggressiveLeadMode and 0.7 or 1)
 		and st.boost > 0 and c.throttle > -0.3
 		and not teammateCloser(st, intercept, interceptTime) then
 		if startFastAerial(st, intercept) then aerialReadyAt = now() + 2.5 end
@@ -1660,19 +1691,39 @@ local function draw()
 			boostMarker.Color, boostMarker.Visible = Color3.fromRGB(85, 230, 155), true
 		end
 	end
+	local me = live and live.me
+	if Toggles.ESPTracers and Toggles.ESPTracers.Value and live and me and cam then
+		local view = cam.ViewportSize
+		local origin = Vector2.new(view.X * 0.5, view.Y)
+		for _, e in live.cars do
+			if e ~= me and e.car and not e.car.isDemoed then
+				local point, on = screen(e.car.body.pos + vector.create(0, 0, 45))
+				if on then
+					n += 1
+					local l = line(n)
+					local allied = e.team == me.team
+					l.From, l.To = origin, point
+					l.Color, l.Visible = allied and Color3.fromRGB(75, 170, 255) or Color3.fromRGB(255, 90, 80), true
+				end
+			end
+		end
+	end
 	for i = n + 1, #lines do lines[i].Visible = false end
 
 	local m = 0
-	local me = live and live.me
-	if Toggles.BoostESP.Value and live then
+	if live and ((Toggles.CarESP and Toggles.CarESP.Value) or Toggles.BoostESP.Value) then
 		for _, e in live.cars do
-			if e ~= me and not e.car.isDemoed then
+			if e ~= me and e.car and not e.car.isDemoed then
 				local s, on = screen(e.car.body.pos + vector.create(0, 0, 90))
 				if on then
 					m += 1
 					local t = text(m)
 					local allied = me and e.team == me.team
-					t.Text = string.format("%s %d", allied and "TIME" or "RIVAL", math.floor(e.car.boost))
+					local distance = me and math.floor(vector.magnitude(flat(e.car.body.pos - me.car.body.pos))) or 0
+					local role = allied and "ALLY" or "OPP"
+					local label = Toggles.CarESP and Toggles.CarESP.Value and string.format("%s %duu", role, distance) or role
+					if Toggles.BoostESP.Value then label ..= string.format(" | BOOST %d", math.floor(e.car.boost)) end
+					t.Text = label
 					t.Color = allied and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
 					t.Position, t.Visible = s, true
 				end
@@ -1684,6 +1735,127 @@ end
 
 local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt, lastRewardClickAt = 0, 0, 0, 0
 local rematchQueued, rematchAttempts, rewardAttempts = false, 0, 0
+local lastRegionClickAt = 0
+local currentServerFriendIds, friendsInUniverse = {}, {}
+local trackedPartyFriendIds = sharedEnv.CatwareTurboSoccerPartyFriendIds or {}
+local savedFriendsOk, savedFriends = pcall(function()
+	return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
+end)
+if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
+	and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
+	for _, userId in savedFriends.ids do
+		userId = tonumber(userId)
+		if userId then trackedPartyFriendIds[userId] = true end
+	end
+end
+sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
+local friendServerUpdatedAt, nextServerFriendQueryAt, nextUniverseFriendQueryAt = 0, 0, 0
+local friendQueryPending, partyFollowPending = false, false
+local partyMissingSince, partyWaitSince, partyFriendReturnedAt = nil, nil, nil
+local partyFollowNextAt, lastPartyFollowAt = 0, 0
+local function readUserId(value)
+	local ok, userId = pcall(function() return value.UserId or value.Id end)
+	return ok and tonumber(userId) or nil
+end
+
+local function refreshFriendCaches()
+	if not Toggles.AutoPartyQueue or not Toggles.AutoPartyQueue.Value or friendQueryPending then return end
+	local stamp = os.clock()
+	local queryServer = stamp >= nextServerFriendQueryAt
+	local queryUniverse = stamp >= nextUniverseFriendQueryAt
+	if not queryServer and not queryUniverse then return end
+	if queryServer then nextServerFriendQueryAt = stamp + 5 end
+	if queryUniverse then nextUniverseFriendQueryAt = stamp + 20 end
+	friendQueryPending = true
+	task.spawn(function()
+		if queryServer then
+			local ok, friends = pcall(function() return LP:GetFriendsInServerAsync() end)
+			if ok and type(friends) == "table" then
+				local found = {}
+				for _, friend in friends do
+					local userId = readUserId(friend)
+					if userId then found[userId] = true end
+				end
+				currentServerFriendIds = found
+				friendServerUpdatedAt = os.clock()
+			end
+		end
+		if queryUniverse then
+			local ok, friends = pcall(function() return LP:GetFriendsInUniverseAsync() end)
+			if ok and type(friends) == "table" then
+				local found = {}
+				for _, entry in friends do
+					local userId = readUserId(entry.User)
+					local placeId, gameId = tonumber(entry.PlaceId), tostring(entry.GameId or "")
+					if userId and placeId and gameId ~= "" then
+						found[userId] = { placeId = placeId, gameId = gameId }
+					end
+				end
+				friendsInUniverse = found
+			end
+		end
+		friendQueryPending = false
+	end)
+end
+
+local function trackedFriendIsPresent()
+	if os.clock() - friendServerUpdatedAt > 15 then return false end
+	for userId in trackedPartyFriendIds do
+		if currentServerFriendIds[userId] then return true end
+	end
+	return false
+end
+
+local function trackFriendsInCurrentMatch()
+	local changed = false
+	for userId in currentServerFriendIds do
+		if not trackedPartyFriendIds[userId] then
+			trackedPartyFriendIds[userId] = true
+			changed = true
+		end
+	end
+	if changed then
+		local ids = {}
+		for userId in trackedPartyFriendIds do table.insert(ids, userId) end
+		sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
+		pcall(function()
+			TeleportService:SetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63", { savedAt = os.time(), ids = ids })
+		end)
+	end
+end
+
+local function followTrackedFriend()
+	local stamp = os.clock()
+	if partyFollowPending or stamp < partyFollowNextAt then return end
+	partyFollowPending, partyFollowNextAt, lastPartyFollowAt = true, stamp + 20, stamp
+	task.spawn(function()
+		local ok, friends = pcall(function() return LP:GetFriendsInUniverseAsync() end)
+		local best, bestCount = nil, 0
+		if ok and type(friends) == "table" then
+			local servers = {}
+			for _, entry in friends do
+				local userId = readUserId(entry.User)
+				local placeId, gameId = tonumber(entry.PlaceId), tostring(entry.GameId or "")
+				if userId and trackedPartyFriendIds[userId] and placeId and gameId ~= "" and gameId ~= game.JobId then
+					local key = tostring(placeId) .. ":" .. gameId
+					local server = servers[key] or { placeId = placeId, gameId = gameId, count = 0 }
+					server.count += 1
+					servers[key] = server
+				end
+			end
+			for _, server in servers do
+				if server.count > bestCount then best, bestCount = server, server.count end
+			end
+		end
+		if best then
+			pcall(function()
+				TeleportService:TeleportToPlaceInstance(best.placeId, best.gameId, LP)
+			end)
+		end
+		partyFollowPending = false
+	end)
+end
+
 local function guiIsVisible(button, root)
 	local node = button
 	while node and node ~= root do
@@ -1692,6 +1864,44 @@ local function guiIsVisible(button, root)
 		node = node.Parent
 	end
 	return node == root
+end
+
+local function scoreGapFromHud()
+	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
+	local camera = workspace.CurrentCamera
+	if not playerGui or not camera then return nil end
+	local size = camera.ViewportSize
+	local mid = size.X * 0.5
+	local rows = {}
+	for _, item in playerGui:GetDescendants() do
+		if item:IsA("TextLabel") and guiIsVisible(item, playerGui) then
+			local valueText = tostring(item.Text or ""):match("^%s*(%d+)%s*$")
+			local value = valueText and tonumber(valueText)
+			if value and value <= 99 then
+				local position = item.AbsolutePosition + item.AbsoluteSize * 0.5
+				if position.Y <= size.Y * 0.18 and position.X >= size.X * 0.3 and position.X <= size.X * 0.7 then
+					local row = math.floor(position.Y / math.max(12, size.Y * 0.018) + 0.5)
+					local entry = rows[row] or { y = position.Y }
+					if position.X < mid then
+						local distance = math.abs(position.X - size.X * 0.42)
+						if not entry.leftDistance or distance < entry.leftDistance then entry.left, entry.leftDistance = value, distance end
+					else
+						local distance = math.abs(position.X - size.X * 0.58)
+						if not entry.rightDistance or distance < entry.rightDistance then entry.right, entry.rightDistance = value, distance end
+					end
+					rows[row] = entry
+				end
+			end
+		end
+	end
+	local best, bestY = nil, math.huge
+	for _, row in rows do
+		if row.left ~= nil and row.right ~= nil then
+			local distance = math.abs(row.y - size.Y * 0.06)
+			if distance < bestY then best, bestY = math.abs(row.left - row.right), distance end
+		end
+	end
+	return best
 end
 
 local function buttonContext(button)
@@ -1720,6 +1930,35 @@ local function isReplaySkip(context)
 	local skip = context:find("skip", 1, true) or context:find("pular", 1, true) or context:find("saltar", 1, true)
 	local continue = context:find("continue", 1, true) or context:find("continuar", 1, true)
 	return replay ~= nil and (skip ~= nil or continue ~= nil)
+end
+
+local function isYesAction(button)
+	local labels = { tostring(button.Name or "") }
+	if button:IsA("TextButton") then table.insert(labels, tostring(button.Text or "")) end
+	for _, child in button:GetDescendants() do
+		if child:IsA("TextLabel") or child:IsA("TextButton") then
+			table.insert(labels, tostring(child.Name or ""))
+			table.insert(labels, tostring(child.Text or ""))
+		end
+	end
+	for _, label in labels do
+		local normalized = label:lower():gsub("[%s%p_]+", "")
+		if normalized == "yes" or normalized == "sim" or normalized == "yesbutton" or normalized == "simbotao" then
+			return true
+		end
+	end
+	return false
+end
+
+local function isMoreRegionsConfirmation(context)
+	local region = context:find("region", 1, true) or context:find("regiao", 1, true) or context:find("regiões", 1, true)
+	local more = context:find("more", 1, true) or context:find("additional", 1, true) or context:find("broader", 1, true)
+		or context:find("expand", 1, true) or context:find("mais", 1, true) or context:find("outra", 1, true)
+		or context:find("ampliar", 1, true) or context:find("expandir", 1, true)
+	local search = context:find("search", 1, true) or context:find("queue", 1, true)
+		or context:find("match", 1, true) or context:find("busca", 1, true)
+		or context:find("procur", 1, true) or context:find("partida", 1, true)
+	return region ~= nil and more ~= nil and search ~= nil
 end
 
 local function isRematch(context, postMatch)
@@ -1811,26 +2050,74 @@ local function activateUiButton(button)
 end
 
 local function autoAdvanceUi()
-	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value and not Toggles.AutoDismissRewards.Value then return end
+	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value and not Toggles.AutoDismissRewards.Value
+		and not Toggles.AutoExpandRegions.Value and not Toggles.AutoPartyQueue.Value
+		and not Toggles.AggressiveTwoGoalMode.Value then return end
 	local now = os.clock()
 	if now < nextFlowScanAt then return end
 	nextFlowScanAt = now + 0.3
+	refreshFriendCaches()
+	if Toggles.AggressiveTwoGoalMode.Value then
+		local scoreGap = scoreGapFromHud()
+		aggressiveLeadMode = scoreGap ~= nil and scoreGap >= 2
+	else
+		aggressiveLeadMode = false
+	end
+	if Toggles.AutoPartyQueue.Value and friendServerUpdatedAt > 0 then trackFriendsInCurrentMatch() end
 	if live and live.phase == "play" then rematchQueued, rematchAttempts = false, 0 end
 	if rematchQueued and now - lastRematchClickAt >= 6 then rematchQueued = false end
 	local recentMatch = lastMatchAt > 0 and now - lastMatchAt < 180
 	local matchStopped = not live or live.source ~= "match" or live.phase ~= "play" or now - lastMatchAt > 1.5
 	local postMatch = recentMatch and matchStopped
+	local partyTracking = Toggles.AutoPartyQueue.Value
+	local trackedFriends = partyTracking and next(trackedPartyFriendIds) ~= nil
+	local friendPresent = trackedFriends and trackedFriendIsPresent() or false
+	local partyWaiting = false
+	if live and live.source == "match" and live.phase == "play" and partyTracking then
+		trackFriendsInCurrentMatch()
+		trackedFriends = next(trackedPartyFriendIds) ~= nil
+		friendPresent = trackedFriends and trackedFriendIsPresent() or false
+		if trackedFriends and not friendPresent then
+			partyMissingSince = partyMissingSince or now
+			if now - partyMissingSince >= 15 then followTrackedFriend() end
+		else
+			partyMissingSince = nil
+		end
+	else
+		partyMissingSince = nil
+	end
+	if postMatch and trackedFriends then
+		if friendPresent then
+			partyWaitSince, partyFriendReturnedAt = nil, partyFriendReturnedAt or now
+			partyWaiting = now - partyFriendReturnedAt < 5
+		else
+			partyFriendReturnedAt = nil
+			partyWaitSince = partyWaitSince or now
+			partyWaiting = true
+			if now - partyWaitSince >= 25 then followTrackedFriend() end
+		end
+	elseif not postMatch then
+		partyWaitSince, partyFriendReturnedAt = nil, nil
+	end
 	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
-	local rewardButton, replayButton, rematchButton
+	local rewardButton, replayButton, rematchButton, regionButton
 	for _, item in playerGui:GetDescendants() do
 		if item:IsA("GuiButton") and item.Active and guiIsVisible(item, playerGui) then
 			local context = buttonContext(item)
+			if not regionButton and Toggles.AutoExpandRegions.Value and isYesAction(item) and isMoreRegionsConfirmation(context) then
+				regionButton = item
+			end
 			if postMatch and not rewardButton and Toggles.AutoDismissRewards.Value and isRewardLater(item) then rewardButton = item end
 			if not replayButton and Toggles.AutoSkipReplay.Value and isReplaySkip(context) then replayButton = item end
 			if postMatch and not rematchButton and Toggles.AutoRematch.Value and isRematch(context, postMatch) then rematchButton = item end
 			if rewardButton and replayButton and rematchButton then break end
 		end
+	end
+	if regionButton and now - lastRegionClickAt >= 3 then
+		lastRegionClickAt = now
+		activateUiButton(regionButton)
+		return
 	end
 	if rewardButton then
 		if rewardAttempts < 8 and now - lastRewardClickAt >= 2 then
@@ -1848,6 +2135,7 @@ local function autoAdvanceUi()
 		end
 		return
 	end
+	if partyWaiting then return end
 	if rematchButton and not rematchQueued and rematchAttempts < 8 and now - lastRematchClickAt >= 3 then
 		lastRematchClickAt = now
 		rematchAttempts += 1
@@ -1967,19 +2255,28 @@ local Vis = Tabs.Visuals:AddLeftGroupbox("Ball", "circle")
 Vis:AddToggle("BallPath", { Text = "Ball prediction path", Default = true })
 	:AddColorPicker("PathColor", { Default = Color3.fromRGB(255, 220, 60) })
 Vis:AddSlider("PathSeconds", { Text = "Prediction seconds", Default = 2, Min = 1, Max = 6, Rounding = 1 })
-Tabs.Visuals:AddRightGroupbox("Cars", "car"):AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
+local Cars = Tabs.Visuals:AddRightGroupbox("Cars", "car")
+Cars:AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
+Cars:AddToggle("CarESP", { Text = "Car team and distance labels", Default = true })
+Cars:AddToggle("ESPTracers", { Text = "Tracer lines to cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
 	Tooltip = "Learns your shot, pass, aerial, and movement outcomes plus observed player touches and completed teammate receptions. Saves aggregate solo, duo, and trio profiles locally without player names." })
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfile(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
 	Tooltip = "Queues this script for game teleports. Kick and crash recovery uses the desktop monitor plus Madium Auto-Execute." })
-MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
+MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = false,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
 MenuGroup:AddToggle("AutoDismissRewards", { Text = "Choose Later on rewards", Default = true,
 	Tooltip = "Chooses the visible Later/Depois reward option after a finished match, then waits for that screen to close before advancing" })
 MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
 	Tooltip = "After rewards and replay screens are cleared, activates Continue or Play Again and retries if the post-match screen stays open" })
+MenuGroup:AddToggle("AutoExpandRegions", { Text = "Search more regions when asked", Default = true,
+	Tooltip = "Clicks only a visible Yes/Sim button inside a prompt that mentions expanding match search to more regions." })
+MenuGroup:AddToggle("AutoPartyQueue", { Text = "Wait for tracked friends between matches", Default = true,
+	Tooltip = "Tracks Roblox friends observed in your current server, waits for them after a match, then joins their current public server when available." })
+MenuGroup:AddToggle("AggressiveTwoGoalMode", { Text = "Attack more with a 2-goal gap", Default = true,
+	Tooltip = "When the visible score gap is at least two, overrides teammate yielding and pass preference to attempt direct shots, aerials, and flicks." })
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
@@ -2024,5 +2321,6 @@ SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:SetDefaultTheme(ThemeManager.BuiltInThemes["Catppuccin"][2])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
+Toggles.AutoSkipReplay:SetValue(false)
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
