@@ -1190,8 +1190,8 @@ local function draw()
 	for i = m + 1, #texts do texts[i].Visible = false end
 end
 
-local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt = 0, 0, 0
-local rematchQueued, rematchAttempts = false, 0
+local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt, lastRewardClickAt = 0, 0, 0, 0
+local rematchQueued, rematchAttempts, rewardAttempts = false, 0, 0
 local function guiIsVisible(button, root)
 	local node = button
 	while node and node ~= root do
@@ -1230,7 +1230,7 @@ local function isReplaySkip(context)
 	return replay ~= nil and (skip ~= nil or continue ~= nil)
 end
 
-local function isRematch(context)
+local function isRematch(context, postMatch)
 	local phrases = {
 		"rematch", "playagain", "requeue", "queueagain", "jogarnovamente",
 		"jogardenovo", "jogaroutrapartida", "jogaroutrajogo", "novapartida",
@@ -1240,14 +1240,32 @@ local function isRematch(context)
 		if context:find(phrase, 1, true) then return true end
 	end
 	local continuation = context:find("continue", 1, true) or context:find("continuar", 1, true)
-	if continuation then
-		local completedScreen = false
-		for _, token in { "postgame", "matchend", "matchcomplete", "matchresult", "matchsummary", "finalscore", "endmatch", "results", "resultados", "fimdejogo", "partidafinal", "scoreboard", "victory", "defeat" } do
-			if context:find(token, 1, true) then completedScreen = true break end
+	if continuation and postMatch then return true end
+	return false
+end
+
+local rewardLaterLabels = {
+	depois = true, maistarde = true, later = true, notnow = true, skipfornow = true,
+	agoranaon = true, ["agoranão"] = true,
+}
+
+local function isRewardLater(button)
+	local function matches(value, isName)
+		local label = tostring(value or ""):lower():gsub("[%s%p_]+", "")
+		if rewardLaterLabels[label] then return true end
+		if isName then
+			for phrase in rewardLaterLabels do
+				if label:find(phrase, 1, true) then return true end
+			end
 		end
-		local recentMatch = lastMatchAt > 0 and os.clock() - lastMatchAt < 180
-		local matchStopped = not live or live.source ~= "match" or live.phase ~= "play"
-		if recentMatch and (completedScreen or matchStopped) then return true end
+		return false
+	end
+	if matches(button.Name, true) then return true end
+	if button:IsA("TextButton") and matches(button.Text, false) then return true end
+	for _, child in button:GetDescendants() do
+		if child:IsA("TextLabel") or child:IsA("TextButton") then
+			if matches(child.Name, true) or matches(child.Text, false) then return true end
+		end
 	end
 	return false
 end
@@ -1301,26 +1319,42 @@ local function activateUiButton(button)
 end
 
 local function autoAdvanceUi()
-	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value then return end
+	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value and not Toggles.AutoDismissRewards.Value then return end
 	local now = os.clock()
 	if now < nextFlowScanAt then return end
 	nextFlowScanAt = now + 0.3
 	if live and live.phase == "play" then rematchQueued, rematchAttempts = false, 0 end
 	if rematchQueued and now - lastRematchClickAt >= 6 then rematchQueued = false end
+	local recentMatch = lastMatchAt > 0 and now - lastMatchAt < 180
+	local matchStopped = not live or live.source ~= "match" or live.phase ~= "play" or now - lastMatchAt > 1.5
+	local postMatch = recentMatch and matchStopped
 	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
-	local replayButton, rematchButton
+	local rewardButton, replayButton, rematchButton
 	for _, item in playerGui:GetDescendants() do
 		if item:IsA("GuiButton") and item.Active and guiIsVisible(item, playerGui) then
 			local context = buttonContext(item)
+			if postMatch and not rewardButton and Toggles.AutoDismissRewards.Value and isRewardLater(item) then rewardButton = item end
 			if not replayButton and Toggles.AutoSkipReplay.Value and isReplaySkip(context) then replayButton = item end
-			if not rematchButton and Toggles.AutoRematch.Value and isRematch(context) then rematchButton = item end
-			if replayButton and rematchButton then break end
+			if postMatch and not rematchButton and Toggles.AutoRematch.Value and isRematch(context, postMatch) then rematchButton = item end
+			if rewardButton and replayButton and rematchButton then break end
 		end
 	end
-	if replayButton and now - lastReplayClickAt >= 1.5 then
-		lastReplayClickAt = now
-		activateUiButton(replayButton)
+	if rewardButton then
+		if rewardAttempts < 8 and now - lastRewardClickAt >= 2 then
+			lastRewardClickAt = now
+			rewardAttempts += 1
+			activateUiButton(rewardButton)
+		end
+		return
+	end
+	rewardAttempts = 0
+	if replayButton then
+		if now - lastReplayClickAt >= 1.5 then
+			lastReplayClickAt = now
+			activateUiButton(replayButton)
+		end
+		return
 	end
 	if rematchButton and not rematchQueued and rematchAttempts < 8 and now - lastRematchClickAt >= 3 then
 		lastRematchClickAt = now
@@ -1422,8 +1456,10 @@ MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfi
 	Tooltip = "Queues this script for game teleports. Kick and crash recovery uses the desktop monitor plus Madium Auto-Execute." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
+MenuGroup:AddToggle("AutoDismissRewards", { Text = "Choose Later on rewards", Default = true,
+	Tooltip = "Chooses the visible Later/Depois reward option after a finished match, then waits for that screen to close before advancing" })
 MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
-	Tooltip = "Activates Continue or a rematch button on the post-match screen, then retries if the screen stays open" })
+	Tooltip = "After rewards and replay screens are cleared, activates Continue or Play Again and retries if the post-match screen stays open" })
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
@@ -1461,7 +1497,7 @@ end)
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "MenuKeybind", "AutoLoad" })
+SaveManager:SetIgnoreIndexes({ "AutoLoad" })
 ThemeManager:SetFolder("Catware/TurboSoccer")
 SaveManager:SetFolder("Catware/TurboSoccer")
 SaveManager:BuildConfigSection(Tabs["UI Settings"])
