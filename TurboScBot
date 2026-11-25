@@ -5,6 +5,7 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
+local GuiService = game:GetService("GuiService")
 local LP = Players.LocalPlayer
 
 local sharedEnv = getgenv()
@@ -450,6 +451,30 @@ local function wallShotOpportunity(st)
 	return target
 end
 
+local function demoThreat(st)
+	if not Toggles.AutoDemoEvade or not Options.DemoEvadeRadius or not Toggles.AutoDemoEvade.Value
+		or not st.isOnGround or st.rot.up.z < 0.7 or not live or not live.me then return nil end
+	local me = live.me
+	local best
+	local radius = Options.DemoEvadeRadius.Value
+	for _, entry in live.cars do
+		if entry ~= me and entry.team ~= me.team and entry.car and not entry.car.isDemoed then
+			local other = stateOf(entry.car)
+			local relativePosition = flat(other.pos - st.pos)
+			local relativeVelocity = flat(other.vel - st.vel)
+			local speedSquared = vector.dot(relativeVelocity, relativeVelocity)
+			if speedSquared > 1 and vector.dot(relativePosition, relativeVelocity) < 0 then
+				local impactTime = math.clamp(-vector.dot(relativePosition, relativeVelocity) / speedSquared, 0, 0.55)
+				local missDistance = vector.magnitude(relativePosition + relativeVelocity * impactTime)
+				if missDistance <= radius and (not best or impactTime < best.time) then
+					best = { time = impactTime, side = vector.dot(relativePosition, st.rot.right), id = entry.index }
+				end
+			end
+		end
+	end
+	return best
+end
+
 local NX
 local REPO = "https://gitlab.com/azulacs/catware-blox-league/-/raw/main/"
 local NEXTO_VERSION = "2"
@@ -582,6 +607,16 @@ local function drive(c)
 			nx.job = nil
 		end
 		return
+	end
+	if not maneuver then
+		local threat = demoThreat(st)
+		if threat then
+			local side = threat.side
+			if math.abs(side) < 1 then side = (threat.id or 0) % 2 == 0 and 1 or -1 end
+			c.steer = side > 0 and -1 or 1
+			c.handbrake = true
+			return
+		end
 	end
 
 	local userJump = c.jump == true
@@ -830,6 +865,21 @@ wrappedWStep = function(self, ...)
 end
 World.step = wrappedWStep
 
+local nextHookCheckAt = 0
+local function ensureControlHooks()
+	local stamp = os.clock()
+	if stamp < nextHookCheckAt then return end
+	nextHookCheckAt = stamp + 0.75
+	if type(Prediction.step) == "function" and Prediction.step ~= wrappedPStep then
+		origPStep = Prediction.step
+		Prediction.step = wrappedPStep
+	end
+	if type(World.step) == "function" and World.step ~= wrappedWStep then
+		origWStep = World.step
+		World.step = wrappedWStep
+	end
+end
+
 local cam = workspace.CurrentCamera
 local lines, texts = {}, {}
 local landing = Drawing.new("Circle")
@@ -899,7 +949,7 @@ local function draw()
 end
 
 local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt = 0, 0, 0
-local rematchQueued = false
+local rematchQueued, rematchAttempts = false, 0
 local function guiIsVisible(button, root)
 	local node = button
 	while node and node ~= root do
@@ -934,7 +984,8 @@ end
 local function isReplaySkip(context)
 	local replay = context:find("replay", 1, true) or context:find("repeticao", 1, true) or context:find("repetição", 1, true)
 	local skip = context:find("skip", 1, true) or context:find("pular", 1, true) or context:find("saltar", 1, true)
-	return replay ~= nil and skip ~= nil
+	local continue = context:find("continue", 1, true) or context:find("continuar", 1, true)
+	return replay ~= nil and (skip ~= nil or continue ~= nil)
 end
 
 local function isRematch(context)
@@ -946,31 +997,65 @@ local function isRematch(context)
 	for _, phrase in phrases do
 		if context:find(phrase, 1, true) then return true end
 	end
+	local continuation = context:find("continue", 1, true) or context:find("continuar", 1, true)
+	if continuation then
+		local completedScreen = false
+		for _, token in { "postgame", "matchend", "matchcomplete", "matchresult", "matchsummary", "finalscore", "endmatch", "results", "resultados", "fimdejogo", "partidafinal", "scoreboard", "victory", "defeat" } do
+			if context:find(token, 1, true) then completedScreen = true break end
+		end
+		local recentMatch = lastMatchAt > 0 and os.clock() - lastMatchAt < 180
+		local matchStopped = not live or live.source ~= "match" or live.phase ~= "play"
+		if recentMatch and (completedScreen or matchStopped) then return true end
+	end
 	return false
 end
 
-local function activateUiButton(button)
+local function fireButtonSignal(signal, inputObject, clickCount)
+	if type(getconnections) ~= "function" then return false end
+	local ok, connections = pcall(getconnections, signal)
+	if not ok or type(connections) ~= "table" then return false end
+	local hasEnabled = false
+	for _, connection in connections do
+		if connection.Enabled ~= false and type(connection.Fire) == "function" then hasEnabled = true break end
+	end
+	if not hasEnabled then return false end
 	if type(firesignal) == "function" then
-		local ok = pcall(firesignal, button.Activated, nil, 0)
-		if not ok then ok = pcall(firesignal, button.Activated) end
-		if ok then return true end
+		local fired = pcall(firesignal, signal, inputObject, clickCount)
+		if not fired then fired = pcall(firesignal, signal) end
+		if fired then return true end
 	end
-	if type(getconnections) == "function" then
-		local ok, connections = pcall(getconnections, button.Activated)
-		if ok and type(connections) == "table" then
-			local fired = false
-			for _, connection in connections do
-				local didCall, didFire = pcall(function()
-					if connection.Enabled == false or type(connection.Fire) ~= "function" then return false end
-					connection:Fire(nil, 0)
-					return true
-				end)
-				fired = fired or (didCall and didFire == true)
-			end
-			if fired then return true end
-		end
+	local fired = false
+	for _, connection in connections do
+		local didFire = pcall(function()
+			if connection.Enabled == false or type(connection.Fire) ~= "function" then return end
+			connection:Fire(inputObject, clickCount)
+		end)
+		fired = fired or didFire
 	end
-	return false
+	return fired
+end
+
+local function physicalButtonClick(button)
+	if type(isrbxactive) ~= "function" or type(mousemoveabs) ~= "function" or type(mouse1click) ~= "function" then return false end
+	local focusOk, focused = pcall(isrbxactive)
+	if not focusOk or not focused then return false end
+	local position = button.AbsolutePosition + button.AbsoluteSize / 2
+	local insetOk, topLeftInset = pcall(function() return GuiService:GetGuiInset() end)
+	if insetOk then position += topLeftInset end
+	local camera = workspace.CurrentCamera
+	if camera and (position.X < 0 or position.Y < 0 or position.X >= camera.ViewportSize.X or position.Y >= camera.ViewportSize.Y) then return false end
+	local ok = pcall(function()
+		mousemoveabs(math.floor(position.X), math.floor(position.Y))
+		task.wait(0.05)
+		mouse1click()
+	end)
+	return ok
+end
+
+local function activateUiButton(button)
+	if fireButtonSignal(button.Activated, nil, 0) then return true end
+	if fireButtonSignal(button.MouseButton1Click) then return true end
+	return physicalButtonClick(button)
 end
 
 local function autoAdvanceUi()
@@ -978,7 +1063,8 @@ local function autoAdvanceUi()
 	local now = os.clock()
 	if now < nextFlowScanAt then return end
 	nextFlowScanAt = now + 0.3
-	if live and live.phase == "play" then rematchQueued = false end
+	if live and live.phase == "play" then rematchQueued, rematchAttempts = false, 0 end
+	if rematchQueued and now - lastRematchClickAt >= 6 then rematchQueued = false end
 	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
 	local replayButton, rematchButton
@@ -994,8 +1080,9 @@ local function autoAdvanceUi()
 		lastReplayClickAt = now
 		activateUiButton(replayButton)
 	end
-	if rematchButton and not rematchQueued and now - lastRematchClickAt >= 3 then
+	if rematchButton and not rematchQueued and rematchAttempts < 8 and now - lastRematchClickAt >= 3 then
 		lastRematchClickAt = now
+		rematchAttempts += 1
 		rematchQueued = activateUiButton(rematchButton)
 	end
 end
@@ -1006,6 +1093,7 @@ local conn = RunService.RenderStepped:Connect(function()
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
 			or Toggles.AutoStrike.Value or Toggles.AutoAirFollow.Value
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
+		ensureControlHooks()
 		draw()
 		autoAdvanceUi()
 	end)
@@ -1045,6 +1133,8 @@ Mechanics:AddSlider("WallShotRange", { Text = "Wall shot range (uu)", Default = 
 Mechanics:AddSlider("WallShotSide", { Text = "Wall shot side tolerance (uu)", Default = 130, Min = 40, Max = 260, Rounding = 0 })
 Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default = true, Tooltip = "Adds handbrake on grounded turns above the steer threshold" })
 Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.65, Min = 0.3, Max = 1, Rounding = 2 })
+Mechanics:AddToggle("AutoDemoEvade", { Text = "Avoid incoming demos", Default = false, Tooltip = "Steers away when an opponent is projected to collide with your car" })
+Mechanics:AddSlider("DemoEvadeRadius", { Text = "Demo evasion radius (uu)", Default = 175, Min = 100, Max = 300, Rounding = 0 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
 Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0,
@@ -1073,30 +1163,43 @@ Tabs.Visuals:AddRightGroupbox("Cars", "car"):AddToggle("BoostESP", { Text = "Boo
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 local AUTOLOAD_FLAG = DIR .. "autoload"
-local LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
-	.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
-	.. 'if not ok or type(source) ~= "string" then return end '
-	.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-	.. 'pcall(fn)'
+local embeddedSource = sharedEnv.CatwareTurboSoccerSource
+local LOADER
+if type(embeddedSource) == "string" then
+	local encodedSource = string.format("%q", embeddedSource)
+	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+		.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
+		.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
+		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+		.. 'pcall(fn)'
+else
+	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
+		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
+		.. 'if not ok or type(source) ~= "string" then return end '
+		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
+		.. 'pcall(fn)'
+end
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
 	Tooltip = "Tunes shot alignment, aerial range, wave dash timing, and kickoff timing from local outcomes and opponent pressure." })
-MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport / rejoin", Default = isfile(AUTOLOAD_FLAG),
-	Tooltip = "Queues teleports. For kicks or disconnects, install the provided bootstrap in the executor AutoExecute folder." })
+MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfile(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
+	Tooltip = "Queues this script for teleports. Reconnects after a kick require running the bootstrap again." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
 MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
-	Tooltip = "Activates a visible UI button labeled rematch / play again once per match" })
+	Tooltip = "Activates Continue or a rematch button on the post-match screen, then retries if the screen stays open" })
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
 
 Toggles.AutoLoad:OnChanged(function(on)
 	if on then
+		sharedEnv.CatwareTurboSoccerBootstrap = true
 		if not isfolder("Catware") then makefolder("Catware") end
 		if not isfolder(DIR) then makefolder(DIR) end
 		writefile(AUTOLOAD_FLAG, "1")
-	elseif isfile(AUTOLOAD_FLAG) then
-		delfile(AUTOLOAD_FLAG)
+	else
+		sharedEnv.CatwareTurboSoccerBootstrap = false
+		if isfile(AUTOLOAD_FLAG) then delfile(AUTOLOAD_FLAG) end
 	end
 end)
 Toggles.AutoLearn:OnChanged(function(on)
@@ -1155,4 +1258,5 @@ SaveManager:BuildConfigSection(Tabs["UI Settings"])
 ThemeManager:SetDefaultTheme(ThemeManager.BuiltInThemes["Catppuccin"][2])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
+if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
