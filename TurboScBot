@@ -1084,16 +1084,17 @@ local function drive(c)
 	end
 	if Toggles.NextoBot.Value then
 		if maneuver then
-			if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
-			if (maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value and runManeuver(c, st) then return end
-			if maneuver.kind == "flick" and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value and runManeuver(c, st) then return end
+			if Toggles.NextoTacticalAssists and Toggles.NextoTacticalAssists.Value then
+				if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
+				if (maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value and runManeuver(c, st) then return end
+				if maneuver.kind == "flick" and Toggles.AutoFlick.Value and Toggles.AutoFlickPossession.Value and runManeuver(c, st) then return end
+			end
 			maneuver = nil
 		end
 		local ok = pcall(nextoControls, c, st)
 		if not ok then
 			nx.job = nil
 		else
-			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
 			local threat = demoThreat(st)
 			if threat then
 				local side = threat.side
@@ -1102,6 +1103,8 @@ local function drive(c)
 				c.jump, c.boost = false, false
 				return
 			end
+			if not Toggles.NextoTacticalAssists or not Toggles.NextoTacticalAssists.Value then return end
+			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
 			local receiveTarget, receiveTime = incomingPassTarget(st)
 			if receiveTarget and applyPassReceiveControls(c, st, receiveTarget, receiveTime) then return end
 			local target, interceptTime = bestBallTarget(st)
@@ -1877,6 +1880,8 @@ local Tabs = {
 local Bot = Tabs.Main:AddLeftGroupbox("Bot", "bot")
 Bot:AddToggle("NextoBot", { Text = "Nexto (neural bot)", Default = false, Risky = true, Tooltip = "Nexto by Rolv-Arild et al., CC BY-NC-SA 4.0." })
 	:AddKeyPicker("NextoBotKey", { Default = "N", SyncToggleState = true, Mode = "Toggle", Text = "Nexto" })
+Bot:AddToggle("NextoTacticalAssists", { Text = "Tactical overrides for Nexto", Default = false,
+	Tooltip = "Off preserves Nexto's trained controls. On lets custom pass, shot, team rotation, and air-dribble assists override it." })
 
 local Assist = Tabs.Main:AddRightGroupbox("Assists", "hand-helping")
 local Mechanics = Tabs.Main:AddLeftGroupbox("Mechanics", "car")
