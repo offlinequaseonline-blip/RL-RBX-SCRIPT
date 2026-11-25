@@ -614,6 +614,51 @@ local function demoThreat(st)
 	return best
 end
 
+local boostRouteTarget
+local function boostPadTarget(st)
+	local threshold = Options.BoostRouteThreshold
+	local ballBuffer = Options.BoostRouteBallBuffer
+	local maxRange = Options.BoostRouteMaxRange
+	if not Toggles.AutoBoostRoute or not Toggles.AutoBoostRoute.Value or not live
+		or not threshold or not ballBuffer or not maxRange
+		or not st.isOnGround or st.rot.up.z < 0.7 or st.boost >= threshold.Value then return nil end
+	local ball = live.ball and live.ball.body
+	if not ball or vector.magnitude(flat(ball.pos - st.pos)) < ballBuffer.Value then return nil end
+	local best, bestScore
+	for _, pad in live.pads do
+		local pos = pad.pos
+		if pad.isActive and pos then
+			local direction = flat(pos - st.pos)
+			local distance = vector.magnitude(direction)
+			if distance >= 90 and distance <= maxRange.Value then
+				local turn = math.abs(angleTo(st.rot, direction))
+				local largePad = pos.z > 72
+				local score = distance + turn * 180 - (largePad and 250 or 0)
+				if not bestScore or score < bestScore then best, bestScore = pos, score end
+			end
+		end
+	end
+	return best
+end
+
+local function routeToBoostPad(c, st)
+	boostRouteTarget = nil
+	if Toggles.NextoBot.Value then return false end
+	local target = boostPadTarget(st)
+	if not target then return false end
+	local direction = flat(target - st.pos)
+	local distance = vector.magnitude(direction)
+	if distance < 1 then return false end
+	local angle = angleTo(st.rot, direction)
+	boostRouteTarget = target
+	c.throttle = 1
+	c.steer = clamp1(angle / (math.pi / 2))
+	c.boost = st.boost > 0 and distance > 250 and math.abs(angle) < 0.45
+	c.jump = false
+	if Toggles.AutoPowerslide.Value and math.abs(angle) >= Options.PowerslideSteer.Value then c.handbrake = true end
+	return true
+end
+
 local NX
 local REPO = "https://gitlab.com/azulacs/catware-blox-league/-/raw/main/"
 local NEXTO_VERSION = "2"
@@ -724,6 +769,7 @@ local function nextoControls(c, st)
 end
 
 local function drive(c)
+	boostRouteTarget = nil
 	local me = live.me
 	if not me then resetControlState() return end
 	if not Toggles.NextoBot or not Toggles.AutoSpeedFlip or not Toggles.AutoPass then return end
@@ -888,6 +934,7 @@ local function drive(c)
 		if not enabled then maneuver = nil end
 	end
 	if runManeuver(c, st) then return end
+	if routeToBoostPad(c, st) then return end
 	if Toggles.AutoAirFollow.Value and not st.isOnGround and not st.isFlipping and c.boost
 		and math.abs(c.pitch) + math.abs(c.yaw) + math.abs(c.roll) < 0.1
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
@@ -1068,6 +1115,8 @@ local cam = workspace.CurrentCamera
 local lines, texts = {}, {}
 local landing = Drawing.new("Circle")
 landing.Thickness, landing.NumSides, landing.Filled = 2, 24, false
+local boostMarker = Drawing.new("Circle")
+boostMarker.Thickness, boostMarker.NumSides, boostMarker.Filled = 2, 20, false
 
 local function line(i)
 	local l = lines[i]
@@ -1089,6 +1138,7 @@ end
 local function draw()
 	local n = 0
 	landing.Visible = false
+	boostMarker.Visible = false
 	if Toggles.BallPath.Value and #path > 1 then
 		local col = Options.PathColor.Value
 		local prev, prevOn = screen(live.ball.body.pos)
@@ -1109,6 +1159,13 @@ local function draw()
 				end
 				break
 			end
+		end
+	end
+	if boostRouteTarget and live and Toggles.AutoBoostRoute.Value then
+		local point, onScreen = screen(boostRouteTarget)
+		if onScreen then
+			boostMarker.Position, boostMarker.Radius = point, 15
+			boostMarker.Color, boostMarker.Visible = Color3.fromRGB(85, 230, 155), true
 		end
 	end
 	for i = n + 1, #lines do lines[i].Visible = false end
@@ -1276,7 +1333,7 @@ local conn = RunService.RenderStepped:Connect(function()
 	local ok = pcall(function()
 		local want = Toggles.BallPath.Value or Toggles.AutoFlip.Value
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
-			or Toggles.AutoStrike.Value or Toggles.AutoAirFollow.Value
+			or Toggles.AutoStrike.Value or Toggles.AutoPass.Value or Toggles.AutoAirFollow.Value
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
 		ensureControlHooks()
 		draw()
@@ -1320,6 +1377,10 @@ Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default
 Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.65, Min = 0.3, Max = 1, Rounding = 2 })
 Mechanics:AddToggle("AutoDemoEvade", { Text = "Avoid incoming demos", Default = false, Tooltip = "Steers away when an opponent is projected to collide with your car" })
 Mechanics:AddSlider("DemoEvadeRadius", { Text = "Demo evasion radius (uu)", Default = 175, Min = 100, Max = 300, Rounding = 0 })
+Mechanics:AddToggle("AutoBoostRoute", { Text = "Route to active boost pads", Default = false, Tooltip = "When grounded, low on boost, and away from the ball, steers to a reachable active pad. Nexto already handles pad routes." })
+Mechanics:AddSlider("BoostRouteThreshold", { Text = "Route below boost", Default = 25, Min = 10, Max = 50, Rounding = 0 })
+Mechanics:AddSlider("BoostRouteMaxRange", { Text = "Boost pad route range (uu)", Default = 1500, Min = 500, Max = 2500, Rounding = 0 })
+Mechanics:AddSlider("BoostRouteBallBuffer", { Text = "Keep this far from ball (uu)", Default = 550, Min = 250, Max = 900, Rounding = 0 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
 Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 30, Min = 0, Max = 150, Rounding = 0,
@@ -1358,7 +1419,7 @@ local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
 	Tooltip = "Learns shot/pass outcomes, aerial challenges, wave dash timing, kickoff timing, opponent pressure, and team double commits. Saves separate solo, duo, and trio profiles locally." })
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfile(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
-	Tooltip = "Queues this script for teleports. Reconnects after a kick require running the bootstrap again." })
+	Tooltip = "Queues this script for game teleports. Kick and crash recovery uses the desktop monitor plus Madium Auto-Execute." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = true,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
 MenuGroup:AddToggle("AutoRematch", { Text = "Play again automatically", Default = true,
@@ -1394,6 +1455,7 @@ Library:OnUnload(function()
 	for _, d in lines do d:Remove() end
 	for _, d in texts do d:Remove() end
 	landing:Remove()
+	boostMarker:Remove()
 end)
 
 ThemeManager:SetLibrary(Library)
