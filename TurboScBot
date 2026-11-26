@@ -1,5 +1,4 @@
-local sharedEnv = getgenv()
-sharedEnv.CatwareTurboSoccerSource = [========[local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
+local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
 local DIR = "Catware/TurboSoccer/"
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -67,7 +66,7 @@ sharedEnv.CatwareTurboSoccerShowStartupFailure = showStartupPanel
 if sharedEnv.CatwareTurboSoccerLoading then
 	local startedAt = sharedEnv.CatwareTurboSoccerLoadingAt
 	if type(startedAt) == "number" and os.clock() - startedAt < 25 then
-		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "already loading"
+		sharedEnv.CatwareTurboSoccerStartupStatus = "already loading"
 		showStartupPanel("Outra inicialização ainda está em andamento.")
 		return
 	end
@@ -76,8 +75,8 @@ end
 local bootToken = {}
 sharedEnv.CatwareTurboSoccerLoading = bootToken
 sharedEnv.CatwareTurboSoccerLoadingAt = os.clock()
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+sharedEnv.CatwareTurboSoccerStartupStatus = "loading"
+sharedEnv.CatwareTurboSoccerStartupError = nil
 task.delay(90, function()
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
@@ -94,7 +93,7 @@ repeat
 	if not LP then task.wait(0.1) end
 until LP or os.clock() >= playerDeadline
 if not LP then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "LocalPlayer unavailable"
+	sharedEnv.CatwareTurboSoccerStartupStatus = "LocalPlayer unavailable"
 	showStartupPanel("O jogador local não ficou disponível em 15 segundos.")
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
@@ -105,8 +104,8 @@ end
 
 local function stopLoading(reason)
 	if reason then
-		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = reason
-		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup failed"
+		sharedEnv.CatwareTurboSoccerStartupError = reason
+		sharedEnv.CatwareTurboSoccerStartupStatus = "startup failed"
 		showStartupPanel(reason)
 	end
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
@@ -166,22 +165,22 @@ if type(embeddedSource) == "string" then
 			.. 'local env = getgenv() local ok, source = pcall(readfile, ' .. encodedPath .. ') '
 			.. 'if not ok or type(source) ~= "string" then return end '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	else
 		local encodedSource = string.format("%q", embeddedSource)
 		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 			.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	end
 else
 	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-		.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+		.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 end
 
 local queued = false
@@ -257,7 +256,7 @@ for name, module in {
 	if not module then table.insert(missingGameModules, name) end
 end
 if #missingGameModules > 0 then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "Missing game modules: " .. table.concat(missingGameModules, ", ")
+	sharedEnv.CatwareTurboSoccerStartupError = "Missing game modules: " .. table.concat(missingGameModules, ", ")
 end
 
 local function instantiateRemoteModule(source)
@@ -494,6 +493,22 @@ local function shouldPowerSlide(st, angle, distance)
 	return distance == nil or not Options.PowerslideMinDistance or distance >= Options.PowerslideMinDistance.Value
 end
 
+local function applyDriftCorrection(c, st)
+	if not Toggles.AutoDriftCorrection or not Toggles.AutoDriftCorrection.Value
+		or not st.isOnGround or st.isFlipping or maneuver or st.rot.up.z < 0.75 then return false end
+	local forward, velocity = flat(st.rot.forward), flat(st.vel)
+	local speed = vector.magnitude(velocity)
+	if speed < 320 or vector.magnitude(forward) < 1 then return false end
+	local forwardSpeed = vector.dot(velocity, vector.normalize(forward))
+	local lateralSpeed = vector.dot(velocity, st.rot.right)
+	if forwardSpeed < 0 or math.abs(lateralSpeed) < Options.DriftCorrectionThreshold.Value then return false end
+	local angle = angleTo(st.rot, velocity)
+	c.steer = clamp1(angle / (math.pi / 2))
+	c.throttle = math.min(c.throttle, 0.45)
+	c.boost, c.handbrake = false, false
+	return true
+end
+
 local function now() return (live and live.tick or 0) * TICK end
 
 local function orient(c, st, f)
@@ -513,18 +528,24 @@ end
 
 local maneuver
 local aggressiveLeadMode = false
-local airDribbleActive = false
-local airDribbleLearningAction = { kind = "airDribble" }
+local airActions = {
+	dribbleActive = false,
+	dribbleLearningAction = { kind = "airDribble" },
+	passActive = false,
+	passLearningAction = { kind = "pass" },
+}
 local lastJumpInput = false
 local lastGroundJumpAt
 local controlSource, controlTick
-local kickoffAssist = { armed = false, locked = false }
-local autoFlipReadyAt, halfFlipReadyAt, aerialReadyAt, strikeReadyAt, flickReadyAt, waveDashReadyAt, wallShotReadyAt = 0, 0, 0, 0, 0, 0, 0
+local kickoffAssist = { armed = false, locked = false, isTaker = false, supportUntil = 0 }
+local cooldown = { autoFlip = 0, halfFlip = 0, aerial = 0, airDodge = 0, strike = 0, flick = 0, waveDash = 0, wallShot = 0 }
 
 local function resetControlState()
-	maneuver, airDribbleActive, lastJumpInput, lastGroundJumpAt = nil, false, false, nil
+	maneuver, airActions.dribbleActive, airActions.passActive, lastJumpInput, lastGroundJumpAt = nil, false, false, false, nil
 	kickoffAssist.armed, kickoffAssist.locked = false, false
-	autoFlipReadyAt, halfFlipReadyAt, aerialReadyAt, strikeReadyAt, flickReadyAt, waveDashReadyAt, wallShotReadyAt = 0, 0, 0, 0, 0, 0, 0
+	cooldown.autoFlip, cooldown.halfFlip, cooldown.aerial, cooldown.airDodge = 0, 0, 0, 0
+	cooldown.strike, cooldown.flick, cooldown.waveDash, cooldown.wallShot = 0, 0, 0, 0
+	kickoffAssist.isTaker, kickoffAssist.supportUntil = false, 0
 end
 
 local function bestBallTarget(st)
@@ -607,10 +628,22 @@ local function startHalfFlip(st)
 	return true
 end
 
-local function startFastAerial(st, target)
+local function startFastAerial(st, target, minimumHeight)
 	target = target or bestBallTarget(st)
-	if not target or target.z - st.pos.z < Options.AerialHeight.Value or st.boost <= 0 then return false end
+	if not target or target.z - st.pos.z < (minimumHeight or Options.AerialHeight.Value) or st.boost <= 0 then return false end
 	maneuver = { kind = "fastAerial", t0 = now(), target = target, wasAirborne = false }
+	return true
+end
+
+local function startAerialDodge(st, target)
+	if maneuver or st.isOnGround or st.isFlipping or st.hasFlipped or st.hasDoubleJumped then return false end
+	local direction = flat(target - st.pos)
+	if vector.magnitude(direction) < 1 then return false end
+	local angle = angleTo(st.rot, direction)
+	local pitch, yaw = -math.cos(angle), math.sin(angle)
+	local magnitude = math.max(math.abs(pitch), math.abs(yaw))
+	if magnitude < 1e-6 then return false end
+	maneuver = { kind = "airDodge", t0 = now(), pitch = pitch / magnitude, yaw = yaw / magnitude, sawFlip = false }
 	return true
 end
 
@@ -651,6 +684,23 @@ local function runManeuver(c, st)
 		elseif dt < 0.2 and not st.hasDoubleJumped then
 			c.jump = true
 		else
+			c.jump = false
+		end
+		return true
+	end
+
+	if m.kind == "airDodge" then
+		if st.isOnGround or dt > 0.24 then
+			maneuver = nil
+			c.jump = false
+			return false
+		end
+		if st.isFlipping then m.sawFlip = true end
+		c.throttle, c.boost, c.handbrake = 1, false, false
+		c.pitch, c.yaw, c.roll = m.pitch, m.yaw, 0
+		c.jump = dt < 0.1
+		if m.sawFlip and not st.isFlipping then
+			maneuver = nil
 			c.jump = false
 		end
 		return true
@@ -891,18 +941,18 @@ end
 
 local function applyPassReceiveControls(c, st, target, interceptTime)
 	if not target then return false end
-	if st.isOnGround and Toggles.AutoFastAerial.Value and now() >= aerialReadyAt
+	if st.isOnGround and Toggles.AutoFastAerial.Value and now() >= cooldown.aerial
 		and target.z - st.pos.z >= Options.AerialHeight.Value
 		and interceptTime <= Options.AerialMaxTime.Value and st.boost > 0 then
 		if startFastAerial(st, target) then
-			aerialReadyAt = now() + 2.5
+			cooldown.aerial = now() + 2.5
 			return runManeuver(c, st)
 		end
 	end
-	if st.isOnGround and Toggles.AutoFlip.Value and now() >= autoFlipReadyAt then
+	if st.isOnGround and Toggles.AutoFlip.Value and now() >= cooldown.autoFlip then
 		local impact = nearBall(st, Options.FlipRange.Value)
 		if impact and startDodge(st, impact, "flip") then
-			autoFlipReadyAt = now() + 0.9
+			cooldown.autoFlip = now() + 0.9
 			return runManeuver(c, st)
 		end
 	end
@@ -933,6 +983,9 @@ local function applyAirDribbleControls(c, st, force)
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
 	if not ball or not attack then return false end
+	local intercept, interceptTime, interceptDistance = bestBallTarget(st)
+	if intercept and interceptTime and interceptDistance
+		and interceptTime <= Options.AirRedirectWindow.Value and interceptDistance <= Options.AirRedirectRange.Value then return false end
 	local leadTime = math.clamp(vector.magnitude(flat(ball.pos - st.pos)) / math.max(vector.magnitude(flat(st.vel)), 300), 0.06, 0.18)
 	local predictedBall = ball.pos + ball.vel * leadTime
 	local predictionError = math.huge
@@ -945,31 +998,35 @@ local function applyAirDribbleControls(c, st, force)
 	local futureCar = st.pos + st.vel * leadTime
 	local relative = predictedBall - futureCar
 	local planarRelative = flat(relative)
-	local distance = vector.magnitude(planarRelative)
+	local distance = vector.magnitude(relative)
+	local horizontalDistance = vector.magnitude(planarRelative)
 	local lateralAxis = vector.create(attack.y, -attack.x, 0)
 	local forwardGap = vector.dot(planarRelative, attack)
 	local lateralGap = vector.dot(planarRelative, lateralAxis)
 	local height = relative.z
-	if distance > Options.AirDribbleRange.Value or forwardGap < -Options.AirDribbleBehind.Value * 0.6
-		or math.abs(lateralGap) > Options.AirDribbleRange.Value * 0.9
+	if distance > Options.AirDribbleRange.Value or horizontalDistance < 45 or forwardGap < 25
+		or math.abs(lateralGap) > Options.AirDribbleRange.Value * 0.65
 		or height < 15 or height > Options.AirDribbleVerticalRange.Value then return false end
 	local behind = math.clamp(Options.AirDribbleBehind.Value + math.max(0, forwardGap - 120) * 0.12,
 		Options.AirDribbleBehind.Value, Options.AirDribbleBehind.Value * 1.8)
 	local target = predictedBall - attack * behind - UP * Options.AirDribbleBelow.Value
 	local aim = target - st.pos
 	local planarAim = flat(aim)
-	local aimDistance = vector.magnitude(planarAim)
+	local aimDistance = vector.magnitude(aim)
 	if aimDistance < 1 then return false end
 	local aimDirection = vector.normalize(aim)
 	local closingSpeed = vector.dot(st.vel - ball.vel, aimDirection)
 	local angle = angleTo(st.rot, planarAim)
 	recover(c, st, aim)
-	local overspeed = closingSpeed > Options.AirDribbleMaxClosing.Value
-	c.throttle = overspeed and aimDistance < 220 and 0.25 or math.clamp(aimDistance / 360, 0.35, 1)
+	local maxClosing = Options.AirDribbleMaxClosing.Value
+	local speedScale = closingSpeed > maxClosing and math.clamp(maxClosing / closingSpeed, 0.15, 1) or 1
+	local turnScale = math.clamp(1 - math.max(0, angle - 0.45) * 0.7, 0.2, 1)
+	local overspeed = closingSpeed > maxClosing * 1.15
+	c.throttle = math.clamp(aimDistance / 360, 0.25, 0.85) * speedScale * turnScale
 	c.jump, c.handbrake = false, false
-	c.boost = st.boost > 0 and distance > 120 and not overspeed
-		and math.abs(angle) < 0.9
-	airDribbleActive = true
+	c.boost = st.boost > 0 and distance > 150 and not overspeed
+		and closingSpeed < maxClosing * 0.9 and math.abs(angle) < 0.7
+	airActions.dribbleActive = true
 	return true
 end
 
@@ -1096,6 +1153,17 @@ local function applyAirInterceptControls(c, st, target, interceptTime, intercept
 	c.throttle, c.jump, c.handbrake = 1, false, false
 	c.boost = st.boost > 0 and interceptDistance > 170 and interceptTime < 0.95 and angle < 1.05
 	return true
+end
+
+local function applyAerialDodge(c, st, target, interceptTime, interceptDistance, force)
+	if not Toggles.AutoAerialDodge or not Toggles.AutoAerialDodge.Value
+		or st.isOnGround or st.isFlipping or maneuver or st.hasFlipped or st.hasDoubleJumped
+		or not target or not interceptTime or not interceptDistance or now() < cooldown.airDodge then return false end
+	if interceptTime > Options.AerialDodgeWindow.Value or interceptDistance > Options.AerialDodgeRange.Value then return false end
+	if not force and teammateCloser(st, target, interceptTime) then return false end
+	if not startAerialDodge(st, target) then return false end
+	cooldown.airDodge = now() + 2.0
+	return runManeuver(c, st)
 end
 
 local function adaptiveWaveDashLead()
@@ -1250,9 +1318,27 @@ local function applyAirRedirectControls(c, st, target, interceptTime, interceptD
 	local towardOwnGoal = -vector.dot(flat(ball.vel), attack)
 	if progress < -Options.ClearDepth.Value and towardOwnGoal > Options.ClearIncomingSpeed.Value then
 		direction = openClearDirection(target, attack)
-	elseif shotLaneBlocked(target, attack) then
-		direction = openShotDirection(target, attack)
-		if shotLaneBlocked(target, direction) then direction = openClearDirection(target, attack) end
+	else
+		local shotDirection = shotLaneBlocked(target, attack) and openShotDirection(target, attack) or attack
+		if not shotLaneBlocked(target, shotDirection) then
+			direction = shotDirection
+		elseif not aggressiveLeadMode and Toggles.AutoAirPass and Toggles.AutoAirPass.Value then
+			local passTarget, receiverIndex = passOpportunity(target)
+			local passDirection = passTarget and flat(passTarget - target) or nil
+			if passDirection and vector.magnitude(passDirection) > 100 then
+				direction = vector.normalize(passDirection)
+				airActions.passActive = true
+				airActions.passLearningAction.targetDirection = direction
+				airActions.passLearningAction.targetPosition = passTarget
+				airActions.passLearningAction.receiverIndex = receiverIndex
+			else
+				direction = Toggles.AutoSideClear and Toggles.AutoSideClear.Value
+					and openClearDirection(target, attack) or attack
+			end
+		else
+			direction = Toggles.AutoSideClear and Toggles.AutoSideClear.Value
+				and openClearDirection(target, attack) or attack
+		end
 	end
 	local redirectPoint = target + direction * Options.AirRedirectDistance.Value
 	local delta = redirectPoint - st.pos
@@ -1402,16 +1488,48 @@ local function applyGroundDribbleControls(c, st)
 	return true
 end
 
+local function applyBounceShotControls(c, st)
+	if not Toggles.AutoBounceShot or not Toggles.AutoBounceShot.Value or not st.isOnGround
+		or maneuver or st.rot.up.z < 0.7 then return false end
+	local attack = attackDirection()
+	if not attack or #path < 3 then return false end
+	local bounce, bounceTime
+	for i = 2, #path - 1 do
+		local previous, point, following = path[i - 1], path[i], path[i + 1]
+		if point.t >= 0.08 and point.t <= Options.BounceShotWindow.Value and point.pos.z <= 125
+			and previous.pos.z > point.pos.z and following.pos.z > point.pos.z + 4 then
+			bounce, bounceTime = point.pos, point.t
+			break
+		end
+	end
+	if not bounce or vector.dot(flat(bounce), attack) < 0 then return false end
+	if not aggressiveLeadMode and teammateCloser(st, bounce, bounceTime) then return false end
+	if not aggressiveLeadMode and passOpportunity(bounce) then return false end
+	local shotDirection = shotLaneBlocked(bounce, attack) and openShotDirection(bounce, attack) or attack
+	if shotLaneBlocked(bounce, shotDirection) then return false end
+	local setup = flat(bounce) - shotDirection * Options.ShotApproachOffset.Value
+	local direction = flat(setup - st.pos)
+	local distance = vector.magnitude(direction)
+	if distance < 75 or distance > Options.BounceShotRange.Value then return false end
+	local angle = angleTo(st.rot, direction)
+	c.throttle = math.clamp(distance / 420, 0.25, 0.78)
+	c.steer = clamp1(angle / (math.pi / 2))
+	c.jump, c.handbrake = false, false
+	c.boost = st.boost > 30 and distance > 350 and math.abs(angle) < 0.22
+	return true
+end
+
 local function applyApproachBrake(c, st, target)
 	if not Toggles.AutoApproachBrake or not Toggles.AutoApproachBrake.Value
 		or not st.isOnGround or st.isFlipping or maneuver or not target then return false end
 	local direction = flat(target - st.pos)
 	local distance = vector.magnitude(direction)
 	local speed = vector.magnitude(flat(st.vel))
-	if distance > 180 or speed < Options.ApproachBrakeSpeed.Value or distance < 25 then return false end
+	if distance > Options.ApproachBrakeDistance.Value or speed < Options.ApproachBrakeSpeed.Value or distance < 25 then return false end
 	local closingSpeed = vector.dot(flat(st.vel), vector.normalize(direction))
 	if closingSpeed < Options.ApproachBrakeSpeed.Value * 0.62 then return false end
-	c.throttle = math.min(c.throttle, 0.18)
+	c.throttle = -math.clamp((closingSpeed - Options.ApproachBrakeSpeed.Value * 0.55)
+		/ math.max(Options.ApproachBrakeSpeed.Value, 1) * 0.28, 0.08, 0.3)
 	c.boost, c.handbrake = false, false
 	return true
 end
@@ -1468,22 +1586,33 @@ local function wallShotOpportunity(st)
 end
 
 local function demoThreat(st)
-	if not Toggles.AutoDemoEvade or not Options.DemoEvadeRadius or not Toggles.AutoDemoEvade.Value
-		or not st.isOnGround or st.rot.up.z < 0.7 or not live or not live.me then return nil end
+	local airborne = not st.isOnGround
+	local enabled = airborne and Toggles.AutoAirDemoEvade and Toggles.AutoAirDemoEvade.Value
+		or not airborne and Toggles.AutoDemoEvade and Toggles.AutoDemoEvade.Value
+	if not enabled or not Options.DemoEvadeRadius or (not airborne and st.rot.up.z < 0.7) or not live or not live.me then return nil end
 	local me = live.me
 	local best
 	local radius = Options.DemoEvadeRadius.Value
 	for _, entry in live.cars do
 		if entry ~= me and entry.team ~= me.team and entry.car and not entry.car.isDemoed then
 			local other = stateOf(entry.car)
-			local relativePosition = flat(other.pos - st.pos)
-			local relativeVelocity = flat(other.vel - st.vel)
+			local relativePosition = other.pos - st.pos
+			local relativeVelocity = other.vel - st.vel
+			if not airborne then
+				relativePosition, relativeVelocity = flat(relativePosition), flat(relativeVelocity)
+			end
 			local speedSquared = vector.dot(relativeVelocity, relativeVelocity)
 			if speedSquared > 1 and vector.dot(relativePosition, relativeVelocity) < 0 then
-				local impactTime = math.clamp(-vector.dot(relativePosition, relativeVelocity) / speedSquared, 0, 0.55)
-				local missDistance = vector.magnitude(relativePosition + relativeVelocity * impactTime)
+				local impactTime = math.clamp(-vector.dot(relativePosition, relativeVelocity) / speedSquared, 0, airborne and 0.45 or 0.55)
+				local missVector = relativePosition + relativeVelocity * impactTime
+				local missDistance = vector.magnitude(missVector)
 				if missDistance <= radius and (not best or impactTime < best.time) then
-					best = { time = impactTime, side = vector.dot(relativePosition, st.rot.right), id = entry.index }
+					best = {
+						time = impactTime,
+						side = vector.dot(relativePosition, st.rot.right),
+						id = entry.index,
+						away = st.pos - (other.pos + other.vel * impactTime),
+					}
 				end
 			end
 		end
@@ -1508,10 +1637,29 @@ local function boostPadTarget(st)
 			local direction = flat(pos - st.pos)
 			local distance = vector.magnitude(direction)
 			if distance >= 90 and distance <= maxRange.Value then
-				local turn = math.abs(angleTo(st.rot, direction))
-				local largePad = pos.z > 72
-				local score = distance + turn * 180 - (largePad and 250 or 0)
-				if not bestScore or score < bestScore then best, bestScore = pos, score end
+				local reserved = false
+				if Toggles.AutoBoostPadReservation and Toggles.AutoBoostPadReservation.Value and live.me then
+					for _, teammate in live.cars do
+						if teammate ~= live.me and teammate.team == live.me.team and teammate.car and not teammate.car.isDemoed then
+							local other = stateOf(teammate.car)
+							local teammateDistance = vector.magnitude(flat(pos - (other.pos + other.vel * 0.2)))
+							local toPad = flat(pos - other.pos)
+							local toPadDistance = vector.magnitude(toPad)
+							local alreadyApproaching = toPadDistance > 1
+								and vector.dot(flat(other.vel), toPad) / toPadDistance > 100
+							if teammateDistance + 100 < distance and (alreadyApproaching or teammateDistance < 300) then
+								reserved = true
+								break
+							end
+						end
+					end
+				end
+				if not reserved then
+					local turn = math.abs(angleTo(st.rot, direction))
+					local largePad = pos.z > 72
+					local score = distance + turn * 180 - (largePad and 250 or 0)
+					if not bestScore or score < bestScore then best, bestScore = pos, score end
+				end
 			end
 		end
 	end
@@ -1643,7 +1791,8 @@ end
 
 local function drive(c)
 	boostRouteTarget = nil
-	airDribbleActive = false
+	airActions.dribbleActive = false
+	airActions.passActive = false
 	local me = live.me
 	if not me then resetControlState() return end
 	if not Toggles.NextoBot or not Toggles.AutoSpeedFlip or not Toggles.AutoPass then return end
@@ -1663,6 +1812,7 @@ local function drive(c)
 	end
 	if Toggles.NextoBot.Value then
 		if maneuver then
+			if maneuver.kind == "airDodge" and Toggles.AutoAerialDodge.Value and runManeuver(c, st) then return end
 			if Toggles.NextoTacticalAssists and Toggles.NextoTacticalAssists.Value then
 				if maneuver.kind == "pass" and Toggles.AutoPass.Value and runManeuver(c, st) then return end
 				if (maneuver.kind == "shot" or maneuver.kind == "clear") and Toggles.AutoStrike.Value and runManeuver(c, st) then return end
@@ -1676,6 +1826,11 @@ local function drive(c)
 		else
 			local threat = demoThreat(st)
 			if threat then
+				if not st.isOnGround then
+					recover(c, st, threat.away)
+					c.throttle, c.jump, c.boost, c.handbrake = 0.25, false, false, false
+					return
+				end
 				local side = threat.side
 				if math.abs(side) < 1 then side = (threat.id or 0) % 2 == 0 and 1 or -1 end
 				c.steer, c.handbrake = side > 0 and -1 or 1, true
@@ -1685,34 +1840,37 @@ local function drive(c)
 			if not Toggles.NextoTacticalAssists or not Toggles.NextoTacticalAssists.Value then
 				if applyAirDribbleControls(c, st, false) then return end
 				local airTarget, airTime, airDistance = bestBallTarget(st)
+				if applyAerialDodge(c, st, airTarget, airTime, airDistance, aggressiveLeadMode) then return end
 				if applyAirRedirectControls(c, st, airTarget, airTime, airDistance, aggressiveLeadMode) then return end
 				if applyAirInterceptControls(c, st, airTarget, airTime, airDistance, aggressiveLeadMode) then return end
+				if applyBounceShotControls(c, st) then return end
 				if applyGroundDribbleControls(c, st) then return end
 				if aggressiveLeadMode then
 					local target, interceptTime, interceptDistance = bestBallTarget(st)
 					local yielding = not aggressiveLeadMode and target and teammateCloser(st, target, interceptTime) or false
 					if not yielding and not st.isOnGround and applyAirDribbleControls(c, st, true) then return end
 					local aerialRange = adaptiveAerialRange() + 250
-					if not yielding and Toggles.AutoFastAerial.Value and st.isOnGround and now() >= aerialReadyAt
+					if not yielding and Toggles.AutoFastAerial.Value and st.isOnGround and now() >= cooldown.aerial
 						and target and interceptTime <= Options.AerialMaxTime.Value and interceptDistance <= aerialRange
 						and target.z - st.pos.z >= Options.AerialHeight.Value * 0.7 and st.boost > 0 then
-						if startFastAerial(st, target) then
-							aerialReadyAt = now() + 2.5
+						if startFastAerial(st, target, Options.AerialHeight.Value * 0.7) then
+							cooldown.aerial = now() + 2.5
 							if runManeuver(c, st) then return end
 						end
 					end
 					if not yielding and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value)
-						and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
+						and st.isOnGround and c.throttle > 0.4 and now() >= cooldown.strike then
 						local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, true)
 						local strikeTarget = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
 						if impact and strikeTarget and kind and startDodge(st, strikeTarget, kind, false, passReceiverIndex)
 							and runManeuver(c, st) then
-							strikeReadyAt = now() + 1.0
+							cooldown.strike = now() + 1.0
 							return
 						end
 					end
 				end
 				if applyApproachBrake(c, st, airTarget) then return end
+				if applyDriftCorrection(c, st) then return end
 				return
 			end
 			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
@@ -1728,32 +1886,36 @@ local function drive(c)
 					c.jump, c.boost, c.handbrake = false, false, false
 				end
 			else
-				if (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
+				if (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround and c.throttle > 0.4 and now() >= cooldown.strike then
 					local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, aggressiveLeadMode)
 					local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
 					if impact and target and kind and (aggressiveLeadMode or not teammateCloser(st, impact, 0.15))
 						and startDodge(st, target, kind, false, passReceiverIndex) then
-						strikeReadyAt = now() + 1.0
+						cooldown.strike = now() + 1.0
 						if runManeuver(c, st) then return end
 					end
 				end
 				if not maneuver and Toggles.AutoFlick.Value and (Toggles.AutoFlickPossession.Value or aggressiveLeadMode)
-					and st.isOnGround and now() >= flickReadyAt and dribbleSetup(st) then
+					and st.isOnGround and now() >= cooldown.flick and dribbleSetup(st) then
 					local flick, kind, receiverIndex = flickTarget(st, aggressiveLeadMode)
 					if flick and startDodge(st, flick, kind or "flick", false, receiverIndex) then
-						flickReadyAt = now() + 0.8
-						if kind == "pass" then strikeReadyAt = now() + 1.0 end
+						cooldown.flick = now() + 0.8
+						if kind == "pass" then cooldown.strike = now() + 1.0 end
 						runManeuver(c, st)
 					end
 				end
 				if not maneuver and applyShotApproachControls(c, st, target, target and vector.magnitude(flat(target - st.pos)) or nil) then return end
 				if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then return end
+				if not yielding and applyAerialDodge(c, st, target, interceptTime,
+					target and vector.magnitude(target - st.pos) or nil, aggressiveLeadMode) then return end
 				if not yielding and applyAirRedirectControls(c, st, target, interceptTime,
 					target and vector.magnitude(target - st.pos) or nil, aggressiveLeadMode) then return end
 				if not yielding and applyAirInterceptControls(c, st, target, interceptTime,
 					target and vector.magnitude(target - st.pos) or nil, aggressiveLeadMode) then return end
+				if not yielding and applyBounceShotControls(c, st) then return end
 				if not yielding and applyGroundDribbleControls(c, st) then return end
 				if not yielding and applyApproachBrake(c, st, target) then return end
+				if not yielding and applyDriftCorrection(c, st) then return end
 			end
 		end
 		return
@@ -1761,6 +1923,12 @@ local function drive(c)
 	if not maneuver then
 		local threat = demoThreat(st)
 		if threat then
+			if not st.isOnGround then
+				recover(c, st, threat.away)
+				c.throttle, c.jump, c.boost, c.handbrake = 0.25, false, false, false
+				lastJumpInput = false
+				return
+			end
 			local side = threat.side
 			if math.abs(side) < 1 then side = (threat.id or 0) % 2 == 0 and 1 or -1 end
 			c.steer = side > 0 and -1 or 1
@@ -1777,7 +1945,20 @@ local function drive(c)
 	local ball = live.ball and live.ball.body
 	local kickoffPause = kickoffPaused(ball)
 	local speed = vector.magnitude(st.vel)
-	if kickoffPause and speed < 5 then kickoffAssist.armed = true end
+	if kickoffPause and speed < 5 then
+		kickoffAssist.armed = true
+		if detectedTeamSize() > 1 then
+			local arena, kickoffMe = nxArena()
+			kickoffAssist.isTaker = kickoffMe ~= nil and kickoffTaker(arena, kickoffMe)
+		else
+			kickoffAssist.isTaker = false
+		end
+	end
+	if not kickoffPause and kickoffAssist.armed then
+		if Toggles.AutoKickoffSupport.Value and not kickoffAssist.isTaker and detectedTeamSize() > 1 then
+			kickoffAssist.supportUntil = now() + 1.1
+		end
+	end
 	if Toggles.AutoSpeedFlip.Value and kickoffAssist.armed and not kickoffAssist.locked and speed > adaptiveKickoffStartSpeed() then
 		if st.isOnGround then
 			local arena, kickoffMe = nxArena()
@@ -1790,6 +1971,29 @@ local function drive(c)
 	end
 	if not kickoffPause then
 		kickoffAssist.armed, kickoffAssist.locked = false, false
+	end
+	if not kickoffPause and Toggles.AutoKickoffSupport.Value and now() < kickoffAssist.supportUntil then
+		local attack = attackDirection()
+		local target = bestBallTarget(st)
+		target = target or ball.pos
+		if attack then
+			local lateral = vector.create(attack.y, -attack.x, 0)
+			local side = (math.floor(tonumber(me.index) or 1) % 2 == 0) and 1 or -1
+			local support = flat(target) - attack * Options.KickoffSupportDepth.Value
+				+ lateral * side * Options.KickoffSupportOffset.Value
+			local direction = flat(support - st.pos)
+			local distance = vector.magnitude(direction)
+			c.jump, c.boost, c.handbrake = false, false, false
+			if distance < 80 then
+				c.throttle, c.steer = 0, 0
+			else
+				local angle = angleTo(st.rot, direction)
+				c.throttle = math.clamp(distance / 420, 0.3, 0.75)
+				c.steer = clamp1(angle / (math.pi / 2))
+			end
+			lastJumpInput = c.jump == true
+			return
+		end
 	end
 
 	local incomingTarget, incomingTime = incomingPassTarget(st)
@@ -1810,11 +2014,19 @@ local function drive(c)
 		lastJumpInput = c.jump == true
 		return
 	end
+	if not yielding and applyAerialDodge(c, st, intercept, interceptTime, interceptDistance, aggressiveLeadMode) then
+		lastJumpInput = c.jump == true
+		return
+	end
 	if not yielding and applyAirRedirectControls(c, st, intercept, interceptTime, interceptDistance, aggressiveLeadMode) then
 		lastJumpInput = c.jump == true
 		return
 	end
 	if not yielding and applyAirInterceptControls(c, st, intercept, interceptTime, interceptDistance, aggressiveLeadMode) then
+		lastJumpInput = c.jump == true
+		return
+	end
+	if not yielding and applyBounceShotControls(c, st) then
 		lastJumpInput = c.jump == true
 		return
 	end
@@ -1827,25 +2039,25 @@ local function drive(c)
 		behindBall = vector.dot(vector.normalize(forward), vector.normalize(toIntercept)) < -0.55
 	end
 	local manualHalfFlip = jumpPressed and c.throttle < -0.5
-	if not maneuver and Toggles.AutoHalfFlip.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= halfFlipReadyAt
+	if not maneuver and Toggles.AutoHalfFlip.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= cooldown.halfFlip
 		and manualHalfFlip and startHalfFlip(st) then
-		halfFlipReadyAt = now() + 1.2
+		cooldown.halfFlip = now() + 1.2
 	end
 	if not maneuver and Toggles.AutoFlick.Value and (jumpPressed or Toggles.AutoFlickPossession.Value or aggressiveLeadMode)
-		and st.isOnGround and now() >= flickReadyAt
+		and st.isOnGround and now() >= cooldown.flick
 		and dribbleSetup(st) then
 		local target, kind, receiverIndex = flickTarget(st, aggressiveLeadMode)
 		if target and startDodge(st, target, kind or "flick", false, receiverIndex) then
-			flickReadyAt = now() + 0.8
-			if kind == "pass" then strikeReadyAt = now() + 1.0 end
+			cooldown.flick = now() + 0.8
+			if kind == "pass" then cooldown.strike = now() + 1.0 end
 		end
 	end
 	if not maneuver and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value) and st.isOnGround
-		and now() >= strikeReadyAt and c.throttle > 0.4 then
+		and now() >= cooldown.strike and c.throttle > 0.4 then
 		local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, aggressiveLeadMode)
 		if impact and (aggressiveLeadMode or not teammateCloser(st, impact, 0.15)) then
 			local target = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
-			if target and startDodge(st, target, kind, false, passReceiverIndex) then strikeReadyAt = now() + 1.0 end
+			if target and startDodge(st, target, kind, false, passReceiverIndex) then cooldown.strike = now() + 1.0 end
 		end
 	end
 	if not yielding and applyShotApproachControls(c, st, intercept, interceptDistance) then
@@ -1858,40 +2070,40 @@ local function drive(c)
 	end
 	local contextualHalfFlip = c.throttle > 0.4 and behindBall and intercept
 		and not teammateCloser(st, intercept, interceptTime)
-	if not maneuver and Toggles.AutoHalfFlip.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= halfFlipReadyAt
+	if not maneuver and Toggles.AutoHalfFlip.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= cooldown.halfFlip
 		and contextualHalfFlip and startHalfFlip(st) then
-		halfFlipReadyAt = now() + 1.2
+		cooldown.halfFlip = now() + 1.2
 	end
-	if not maneuver and Toggles.AutoFastAerial.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= aerialReadyAt
+	if not maneuver and Toggles.AutoFastAerial.Value and st.isOnGround and st.rot.up.z > 0.7 and now() >= cooldown.aerial
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
 		and interceptDistance <= aerialRange
 		and intercept.z - st.pos.z >= Options.AerialHeight.Value * (aggressiveLeadMode and 0.7 or 1)
 		and st.boost > 0 and c.throttle > -0.3
 		and not teammateCloser(st, intercept, interceptTime) then
-		if startFastAerial(st, intercept) then aerialReadyAt = now() + 2.5 end
+		if startFastAerial(st, intercept) then cooldown.aerial = now() + 2.5 end
 	end
-	if not maneuver and Toggles.AutoFlip.Value and st.isOnGround and now() >= autoFlipReadyAt then
+	if not maneuver and Toggles.AutoFlip.Value and st.isOnGround and now() >= cooldown.autoFlip then
 		local b = nearBall(st, Options.FlipRange.Value)
 		if b and c.throttle > -0.3 and not teammateCloser(st, b, 0.15) and startDodge(st, b, "flip") then
-			autoFlipReadyAt = now() + 0.9
+			cooldown.autoFlip = now() + 0.9
 		end
 	end
 	if not maneuver and Toggles.AutoWaveDash.Value and not st.isOnGround and not st.isFlipping
 		and not st.hasFlipped and not st.hasDoubleJumped and not c.boost and st.rot.up.z > 0.85
 		and st.vel.z < -80 and vector.magnitude(flat(st.vel)) >= Options.WaveDashMinSpeed.Value
 		and lastGroundJumpAt and now() - lastGroundJumpAt <= Options.WaveDashJumpWindow.Value
-		and now() >= waveDashReadyAt then
+		and now() >= cooldown.waveDash then
 		local landingTime = timeToGround(st)
 		if landingTime >= 0 and landingTime <= adaptiveWaveDashLead() then
 			local direction = flat(st.vel)
 			if vector.magnitude(direction) < 1 then direction = flat(st.rot.forward) end
-			if startWaveDash(st, st.pos + direction * 100) then waveDashReadyAt = now() + 0.4 end
+			if startWaveDash(st, st.pos + direction * 100) then cooldown.waveDash = now() + 0.4 end
 		end
 	end
-	if not maneuver and Toggles.AutoWallShot.Value and st.isOnGround and now() >= wallShotReadyAt and c.throttle > 0.2 then
+	if not maneuver and Toggles.AutoWallShot.Value and st.isOnGround and now() >= cooldown.wallShot and c.throttle > 0.2 then
 		local target = wallShotOpportunity(st)
 		if target and not teammateCloser(st, target, 0.1) and startDodge(st, target, "wallShot", true) then
-			wallShotReadyAt = now() + 0.9
+			cooldown.wallShot = now() + 0.9
 		end
 	end
 
@@ -1910,6 +2122,7 @@ local function drive(c)
 	if runManeuver(c, st) then return end
 	if routeToBoostPad(c, st) then return end
 	if applyApproachBrake(c, st, intercept) then return end
+	if applyDriftCorrection(c, st) then return end
 	if Toggles.AutoAirFollow.Value and not st.isOnGround and not st.isFlipping and c.boost
 		and math.abs(c.pitch) + math.abs(c.yaw) + math.abs(c.roll) < 0.1
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
@@ -1928,6 +2141,22 @@ local function drive(c)
 		local v = flat(st.vel)
 		recover(c, st, vector.magnitude(v) > 300 and v or nil)
 	end
+end
+
+local function applyBoostReserve(c)
+	if not uiReady or not Toggles.AutoBoostReserve or not Toggles.AutoBoostReserve.Value
+		or not c.boost or boostRouteTarget then return end
+	local me = live and live.me
+	if not me or not me.car then return end
+	local st = stateOf(me.car)
+	if st.boost > Options.BoostReserve.Value then return end
+	local target, interceptTime, interceptDistance = bestBallTarget(st)
+	local urgent = target and interceptTime and interceptDistance
+		and interceptTime <= 0.35 and interceptDistance <= 360
+	if maneuver and maneuver.kind == "fastAerial" and interceptTime and interceptTime <= Options.AerialMaxTime.Value then
+		urgent = true
+	end
+	if not urgent then c.boost = false end
 end
 
 local actionCategory = {
@@ -2177,7 +2406,8 @@ local function updateLearning()
 	end
 	observeOpponentPressure()
 	observePlayerPatterns()
-	local current = maneuver or (airDribbleActive and airDribbleLearningAction or nil)
+	local current = maneuver or (airActions.passActive and airActions.passLearningAction)
+		or (airActions.dribbleActive and airActions.dribbleLearningAction or nil)
 	if learningTrial and live.tick < learningTrial.tick then
 		learningTrial, pendingPeerPass, pendingOwnPass, previousPeerBallVelocity = nil, nil, nil, nil
 	end
@@ -2200,7 +2430,8 @@ wrappedPStep = function(self, controls, ...)
 	local snapshotOk, snapshot = pcall(fromMatch, self)
 	live = snapshotOk and snapshot or nil
 	if uiReady and snapshotOk and controls and self.match and self.match.phase == "play" then
-		pcall(drive, controls)
+		local driveOk = pcall(drive, controls)
+		if driveOk then pcall(applyBoostReserve, controls) end
 		if Protocol and type(Protocol.quantize) == "function" then pcall(Protocol.quantize, controls) end
 	end
 	if uiReady then pcall(updateLearning) end
@@ -2221,7 +2452,10 @@ wrappedWStep = function(self, ...)
 			if worldOk then
 				live = worldState
 				local controls = self.car and self.car.controls
-				if controls then pcall(drive, controls) end
+				if controls then
+					local driveOk = pcall(drive, controls)
+					if driveOk then pcall(applyBoostReserve, controls) end
+				end
 			else
 				live = nil
 			end
@@ -2248,16 +2482,30 @@ end
 
 local cam = workspace.CurrentCamera
 local lines, texts = {}, {}
+local nextDrawingRetryAt = 0
 local function newDrawing(kind)
-	if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then return nil end
-	local ok, object = pcall(Drawing.new, kind)
-	return ok and object or nil
+	local stamp = os.clock()
+	if stamp < nextDrawingRetryAt then return nil end
+	local constructorOk, constructor = pcall(function() return Drawing and Drawing.new end)
+	if not constructorOk or type(constructor) ~= "function" then
+		nextDrawingRetryAt = stamp + 1
+		return nil
+	end
+	local ok, object = pcall(constructor, kind)
+	if not ok or not object then
+		nextDrawingRetryAt = stamp + 1
+		return nil
+	end
+	return object
 end
 
-local landing = newDrawing("Circle")
-if landing then landing.Thickness, landing.NumSides, landing.Filled = 2, 24, false end
-local boostMarker = newDrawing("Circle")
-if boostMarker then boostMarker.Thickness, boostMarker.NumSides, boostMarker.Filled = 2, 20, false end
+local landing
+local function ensureBaseDrawings()
+	if not landing then
+		landing = newDrawing("Circle")
+		if landing then landing.Thickness, landing.NumSides, landing.Filled = 2, 24, false end
+	end
+end
 
 local function line(i)
 	local l = lines[i]
@@ -2288,14 +2536,15 @@ local function screen(uu)
 		if not positionOk then return Vector2.zero, false end
 		position = converted
 	end
-	local v, on = cam:WorldToViewportPoint(position)
+	local projected, v, on = pcall(cam.WorldToViewportPoint, cam, position)
+	if not projected or not v then return Vector2.zero, false end
 	return Vector2.new(v.X, v.Y), on, v.Z
 end
 
 local function draw()
 	local n = 0
+	ensureBaseDrawings()
 	if landing then landing.Visible = false end
-	if boostMarker then boostMarker.Visible = false end
 	if Toggles.BallPath.Value and live and live.ball and #path > 1 then
 		local col = Options.PathColor.Value
 		local prev, prevOn = screen(live.ball.body.pos)
@@ -2310,65 +2559,38 @@ local function draw()
 		end
 		for _, pt in path do
 			if pt.pos.z < 110 then
-				local s, on, depth = screen(pt.pos)
+				local s, on = screen(pt.pos)
 				if on and landing then
-					landing.Position, landing.Radius, landing.Color, landing.Visible = s, math.clamp(12000 / math.max(depth, 1), 5, 22), col, true
+					landing.Position, landing.Radius, landing.Color, landing.Visible = s, 12, col, true
 				end
 				break
 			end
 		end
 	end
-	if boostRouteTarget and live and Toggles.AutoBoostRoute.Value then
-		local point, onScreen = screen(boostRouteTarget)
-		if onScreen and boostMarker then
-			boostMarker.Position, boostMarker.Radius = point, 15
-			boostMarker.Color, boostMarker.Visible = Color3.fromRGB(85, 230, 155), true
-		end
-	end
 	local me = live and live.me
-	if Toggles.ESPTracers and Toggles.ESPTracers.Value and live and me and cam then
-		local view = cam.ViewportSize
-		local origin = Vector2.new(view.X * 0.5, view.Y)
+	if live and Toggles.BoostESP.Value then
+		local m = 0
 		for _, e in live.cars do
-			if e ~= me and e.car and not e.car.isDemoed then
-				local point, on = screen(e.car.body.pos + vector.create(0, 0, 45))
-				if on then
-					n += 1
-					local l = line(n)
-					if l then
-						local allied = e.team == me.team
-						l.From, l.To = origin, point
-						l.Color, l.Visible = allied and Color3.fromRGB(75, 170, 255) or Color3.fromRGB(255, 90, 80), true
-					end
-				end
-			end
-		end
-	end
-	for i = n + 1, #lines do if lines[i] then lines[i].Visible = false end end
-
-	local m = 0
-	if live and ((Toggles.CarESP and Toggles.CarESP.Value) or Toggles.BoostESP.Value) then
-		for _, e in live.cars do
-			if e ~= me and e.car and not e.car.isDemoed then
-				local s, on = screen(e.car.body.pos + vector.create(0, 0, 90))
+			if e ~= me and e.car and not e.car.isDemoed and e.car.body then
+				local point, on = screen(e.car.body.pos + vector.create(0, 0, 90))
 				if on then
 					m += 1
 					local t = text(m)
 					if t then
-						local allied = me and e.team == me.team
-						local distance = me and math.floor(vector.magnitude(flat(e.car.body.pos - me.car.body.pos))) or 0
-						local role = allied and "ALLY" or "OPP"
-						local label = Toggles.CarESP and Toggles.CarESP.Value and string.format("%s %duu", role, distance) or role
-						if Toggles.BoostESP.Value then label ..= string.format(" | BOOST %d", math.floor(e.car.boost)) end
-						t.Text = label
-						t.Color = allied and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
-						t.Position, t.Visible = s, true
+						local boost = math.max(0, math.floor(tonumber(e.car.boost) or 0))
+						t.Text = string.format("%d", boost)
+						t.Color = (me and e.team == me.team)
+							and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
+						t.Position, t.Visible = point, true
 					end
 				end
 			end
 		end
+		for i = m + 1, #texts do if texts[i] then texts[i].Visible = false end end
+	else
+		for _, t in texts do if t then t.Visible = false end end
 	end
-	for i = m + 1, #texts do if texts[i] then texts[i].Visible = false end end
+	for i = n + 1, #lines do if lines[i] then lines[i].Visible = false end end
 end
 
 local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt, lastRewardClickAt = 0, 0, 0, 0
@@ -2377,7 +2599,7 @@ local lastRegionClickAt = 0
 local currentServerFriendIds, friendsInUniverse = {}, {}
 local trackedPartyFriendIds = sharedEnv.CatwareTurboSoccerPartyFriendIds or {}
 local savedFriendsOk, savedFriends = pcall(function()
-	return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
+	return TeleportService:GetTeleportSetting("CatwareTurboSoccerPartyFriends")
 end)
 if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
 	and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
@@ -2457,7 +2679,7 @@ local function trackFriendsInCurrentMatch()
 		for userId in trackedPartyFriendIds do table.insert(ids, userId) end
 		sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
 		pcall(function()
-			TeleportService:SetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63", { savedAt = os.time(), ids = ids })
+			TeleportService:SetTeleportSetting("CatwareTurboSoccerPartyFriends", { savedAt = os.time(), ids = ids })
 		end)
 	end
 end
@@ -2788,7 +3010,7 @@ local conn = RunService.RenderStepped:Connect(function()
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
 			or Toggles.AutoStrike.Value or Toggles.AutoPass.Value or Toggles.AutoPassReceive.Value
 			or Toggles.AutoAirDribble.Value or Toggles.AutoAirFollow.Value or Toggles.AutoAirIntercept.Value
-			or Toggles.AutoAirRedirect.Value
+			or Toggles.AutoAirRedirect.Value or Toggles.AutoBounceShot.Value
 			or Toggles.AutoWaveDash.Value or Toggles.AutoWallShot.Value
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
 		ensureControlHooks()
@@ -2816,6 +3038,10 @@ Bot:AddToggle("NextoTacticalAssists", { Text = "Tactical overrides for Nexto", D
 local Assist = Tabs.Main:AddRightGroupbox("Assists", "hand-helping")
 local Mechanics = Tabs.Main:AddLeftGroupbox("Mechanics", "car")
 Mechanics:AddToggle("AutoSpeedFlip", { Text = "Kickoff speedflip", Default = true, Tooltip = "Runs a diagonal speedflip at kickoff only when the kickoff role check selects you" })
+Mechanics:AddToggle("AutoKickoffSupport", { Text = "Support kickoff in duo / trio", Default = true,
+	Tooltip = "If a teammate has kickoff, routes to a spaced cover position for 1.1 seconds after the first touch instead of joining the same challenge." })
+Mechanics:AddSlider("KickoffSupportDepth", { Text = "Kickoff cover depth (uu)", Default = 300, Min = 150, Max = 650, Rounding = 0 })
+Mechanics:AddSlider("KickoffSupportOffset", { Text = "Kickoff side spacing (uu)", Default = 180, Min = 0, Max = 450, Rounding = 0 })
 Mechanics:AddToggle("AutoHalfFlip", { Text = "Context half-flip", Default = true, Tooltip = "Turns you toward a predicted ball behind you while grounded and driving forward; reverse+jump also triggers it" })
 Mechanics:AddSlider("HalfFlipRange", { Text = "Half-flip ball range (uu)", Default = 900, Min = 350, Max = 1800, Rounding = 0 })
 Mechanics:AddToggle("AutoFastAerial", { Text = "Context fast aerial", Default = true, Tooltip = "Automatically launches for a high predicted intercept when you have boost and the closest teammate route" })
@@ -2836,12 +3062,22 @@ Mechanics:AddToggle("AutoPowerslide", { Text = "Powerslide sharp turns", Default
 Mechanics:AddSlider("PowerslideSteer", { Text = "Powerslide steer threshold", Default = 0.84, Min = 0.3, Max = 1, Rounding = 2 })
 Mechanics:AddSlider("PowerslideMinSpeed", { Text = "Powerslide minimum speed", Default = 650, Min = 0, Max = 1500, Rounding = 0 })
 Mechanics:AddSlider("PowerslideMinDistance", { Text = "Powerslide minimum target distance", Default = 350, Min = 0, Max = 1000, Rounding = 0 })
+Mechanics:AddToggle("AutoDriftCorrection", { Text = "Correct sideways drift", Default = true,
+	Tooltip = "When grounded at speed, steers back toward current travel direction and cuts boost if lateral velocity is high." })
+Mechanics:AddSlider("DriftCorrectionThreshold", { Text = "Drift correction threshold (uu/s)", Default = 260, Min = 120, Max = 600, Rounding = 0 })
 Mechanics:AddToggle("AutoDemoEvade", { Text = "Avoid incoming demos", Default = false, Tooltip = "Steers away when an opponent is projected to collide with your car" })
+Mechanics:AddToggle("AutoAirDemoEvade", { Text = "Avoid incoming demos in air", Default = false,
+	Tooltip = "Predicts a short 3D collision course and cuts boost while orienting away from the approaching opponent." })
 Mechanics:AddSlider("DemoEvadeRadius", { Text = "Demo evasion radius (uu)", Default = 175, Min = 100, Max = 300, Rounding = 0 })
 Mechanics:AddToggle("AutoBoostRoute", { Text = "Route to active boost pads", Default = false, Tooltip = "When grounded, low on boost, and away from the ball, steers to a reachable active pad. Nexto already handles pad routes." })
 Mechanics:AddSlider("BoostRouteThreshold", { Text = "Route below boost", Default = 25, Min = 10, Max = 50, Rounding = 0 })
 Mechanics:AddSlider("BoostRouteMaxRange", { Text = "Boost pad route range (uu)", Default = 1500, Min = 500, Max = 2500, Rounding = 0 })
 Mechanics:AddSlider("BoostRouteBallBuffer", { Text = "Keep this far from ball (uu)", Default = 550, Min = 250, Max = 900, Rounding = 0 })
+Mechanics:AddToggle("AutoBoostPadReservation", { Text = "Yield boost pads to a nearer teammate", Default = true,
+	Tooltip = "Avoids routing to an active pad when an approaching teammate has the clearer, shorter route." })
+Mechanics:AddToggle("AutoBoostReserve", { Text = "Save boost for urgent plays", Default = true,
+	Tooltip = "Cuts boost use below the reserve threshold, except for a close intercept or fast aerial." })
+Mechanics:AddSlider("BoostReserve", { Text = "Boost reserve", Default = 12, Min = 0, Max = 50, Rounding = 0 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
 	Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 60, Min = 0, Max = 150, Rounding = 0,
@@ -2858,6 +3094,7 @@ Assist:AddSlider("GoalShadowTrigger", { Text = "Goal shadow starts beyond (uu)",
 Assist:AddSlider("GoalShadowDepth", { Text = "Goal shadow spacing (uu)", Default = 420, Min = 180, Max = 800, Rounding = 0 })
 Assist:AddToggle("AutoApproachBrake", { Text = "Brake before a fast intercept", Default = true,
 	Tooltip = "Cuts boost and throttle near a predicted ground intercept when speed is high, reducing overshoot and sideways drift." })
+Assist:AddSlider("ApproachBrakeDistance", { Text = "Brake distance (uu)", Default = 240, Min = 100, Max = 400, Rounding = 0 })
 Assist:AddSlider("ApproachBrakeSpeed", { Text = "Brake above speed (uu/s)", Default = 700, Min = 400, Max = 1400, Rounding = 0 })
 Assist:AddToggle("AutoRecover", { Text = "Auto air recovery", Default = true, Tooltip = "Lands you on wheels when you're not touching air controls" })
 local Strike = Tabs.Main:AddRightGroupbox("Shot mechanics", "target")
@@ -2898,10 +3135,20 @@ Strike:AddSlider("FlickPower", { Text = "Flick throttle / boost power", Default 
 Strike:AddSlider("ShotPower", { Text = "Shot throttle / boost power", Default = 0.9, Min = 0.1, Max = 1, Rounding = 2 })
 Strike:AddSlider("PassPower", { Text = "Pass throttle / boost power", Default = 0.62, Min = 0.1, Max = 1, Rounding = 2 })
 Strike:AddToggle("AutoAirFollow", { Text = "Air intercept follow", Default = true, Tooltip = "While you hold boost in the air, aims at the predicted ball intercept when a teammate is not closer" })
+Strike:AddToggle("AutoAerialDodge", { Text = "Dodge into a close aerial", Default = false,
+	Tooltip = "Uses the remaining air dodge only for a close predicted ball intercept, when no teammate has the better route." })
+Strike:AddSlider("AerialDodgeRange", { Text = "Aerial dodge distance (uu)", Default = 230, Min = 100, Max = 400, Rounding = 0 })
+Strike:AddSlider("AerialDodgeWindow", { Text = "Aerial dodge time window (s)", Default = 0.32, Min = 0.12, Max = 0.6, Rounding = 2 })
 Strike:AddToggle("AutoAirIntercept", { Text = "Auto aerial intercept / redirect", Default = true,
 	Tooltip = "In the air, aligns to a near predicted intercept and boosts only when the approach is aligned and no teammate has the better route." })
 Strike:AddToggle("AutoAirRedirect", { Text = "Air redirect through open lane", Default = true,
 	Tooltip = "At a close aerial intercept, aims through the predicted ball toward an open shot lane or a safe defensive clear." })
+Strike:AddToggle("AutoAirPass", { Text = "Pass from a blocked aerial", Default = true,
+	Tooltip = "At a contested aerial, redirects toward an open teammate when the direct shot lane is blocked." })
+Strike:AddToggle("AutoBounceShot", { Text = "Set up a low bounce shot", Default = true,
+	Tooltip = "Uses the predicted ball path to approach a low bounce from behind, only when the ball is in the attacking half and the shot lane is open." })
+Strike:AddSlider("BounceShotWindow", { Text = "Bounce shot prediction window (s)", Default = 0.65, Min = 0.2, Max = 1.2, Rounding = 2 })
+Strike:AddSlider("BounceShotRange", { Text = "Maximum distance to bounce setup (uu)", Default = 850, Min = 350, Max = 1400, Rounding = 0 })
 Strike:AddSlider("AirRedirectRange", { Text = "Air redirect range (uu)", Default = 500, Min = 220, Max = 900, Rounding = 0 })
 Strike:AddSlider("AirRedirectWindow", { Text = "Air redirect time window (s)", Default = 0.55, Min = 0.2, Max = 1.2, Rounding = 2 })
 Strike:AddSlider("AirRedirectDistance", { Text = "Air redirect follow-through (uu)", Default = 180, Min = 80, Max = 350, Rounding = 0 })
@@ -2921,8 +3168,6 @@ Vis:AddToggle("BallPath", { Text = "Ball prediction path", Default = true })
 Vis:AddSlider("PathSeconds", { Text = "Prediction seconds", Default = 2, Min = 1, Max = 6, Rounding = 1 })
 local Cars = Tabs.Visuals:AddRightGroupbox("Cars", "car")
 Cars:AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
-Cars:AddToggle("CarESP", { Text = "Car team and distance labels", Default = true })
-Cars:AddToggle("ESPTracers", { Text = "Tracer lines to cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
@@ -2968,7 +3213,6 @@ Library:OnUnload(function()
 	for _, d in lines do if d then pcall(function() d:Remove() end) end end
 	for _, d in texts do if d then pcall(function() d:Remove() end) end end
 	if landing then pcall(function() landing:Remove() end) end
-	if boostMarker then pcall(function() boostMarker:Remove() end) end
 end)
 
 UI.InterfaceManager:SetLibrary(UI.Fluent)
@@ -2991,34 +3235,12 @@ if startupPanel then pcall(function() startupPanel:Destroy() end) end
 startupPanel, startupPanelLabel = nil, nil
 sharedEnv.CatwareTurboSoccerShowStartupFailure = nil
 if #missingGameModules == 0 then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+	sharedEnv.CatwareTurboSoccerStartupError = nil
+	sharedEnv.CatwareTurboSoccerStartupStatus = "ready"
 else
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready; game hooks unavailable"
+	sharedEnv.CatwareTurboSoccerStartupStatus = "ready; game hooks unavailable"
 end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then
-	sharedEnv.CatwareTurboSoccerLoading = nil
-	sharedEnv.CatwareTurboSoccerLoadingAt = nil
-end
-]========]
-sharedEnv.CatwareTurboSoccerBootstrap = true
-if not game:IsLoaded() then game.Loaded:Wait() end
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
-local compileOk, fn = pcall(loadstring, sharedEnv.CatwareTurboSoccerSource)
-if not compileOk or type(fn) ~= 'function' then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn)
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed"
-	sharedEnv.CatwareTurboSoccerLoading = nil
-	sharedEnv.CatwareTurboSoccerLoadingAt = nil
-	return
-end
-local runOk, runError = pcall(fn)
-if not runOk then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(runError)
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error"
-	if type(sharedEnv.CatwareTurboSoccerShowStartupFailure) == "function" then
-		pcall(sharedEnv.CatwareTurboSoccerShowStartupFailure, runError)
-	end
 	sharedEnv.CatwareTurboSoccerLoading = nil
 	sharedEnv.CatwareTurboSoccerLoadingAt = nil
 end
