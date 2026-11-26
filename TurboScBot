@@ -57,7 +57,7 @@ local function showStartupPanel(message)
 			startupPanelLabel.TextYAlignment = Enum.TextYAlignment.Center
 			startupPanelLabel.Parent = frame
 		end
-		startupPanelLabel.Text = "Catware não conseguiu abrir o menu.\n" .. tostring(message)
+		startupPanelLabel.Text = "Catware\n" .. tostring(message)
 		startupPanel.Parent = parent
 	end)
 	return ok
@@ -66,7 +66,7 @@ sharedEnv.CatwareTurboSoccerShowStartupFailure = showStartupPanel
 if sharedEnv.CatwareTurboSoccerLoading then
 	local startedAt = sharedEnv.CatwareTurboSoccerLoadingAt
 	if type(startedAt) == "number" and os.clock() - startedAt < 25 then
-		sharedEnv.CatwareTurboSoccerStartupStatus = "already loading"
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "already loading"
 		showStartupPanel("Outra inicialização ainda está em andamento.")
 		return
 	end
@@ -75,8 +75,9 @@ end
 local bootToken = {}
 sharedEnv.CatwareTurboSoccerLoading = bootToken
 sharedEnv.CatwareTurboSoccerLoadingAt = os.clock()
-sharedEnv.CatwareTurboSoccerStartupStatus = "loading"
-sharedEnv.CatwareTurboSoccerStartupError = nil
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+showStartupPanel("Iniciando o script...")
 task.delay(90, function()
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
@@ -85,15 +86,21 @@ task.delay(90, function()
 end)
 if sharedEnv.CatwareTurboSoccerUnload then pcall(sharedEnv.CatwareTurboSoccerUnload) end
 
-if not game:IsLoaded() then game.Loaded:Wait() end
+if not game:IsLoaded() then
+	showStartupPanel("Aguardando o Roblox terminar de carregar...")
+	game.Loaded:Wait()
+end
 local LP
 local playerDeadline = os.clock() + 15
 repeat
 	LP = Players.LocalPlayer
-	if not LP then task.wait(0.1) end
+	if not LP then
+		showStartupPanel("Aguardando o jogador local...")
+		task.wait(0.1)
+	end
 until LP or os.clock() >= playerDeadline
 if not LP then
-	sharedEnv.CatwareTurboSoccerStartupStatus = "LocalPlayer unavailable"
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "LocalPlayer unavailable"
 	showStartupPanel("O jogador local não ficou disponível em 15 segundos.")
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
@@ -104,8 +111,8 @@ end
 
 local function stopLoading(reason)
 	if reason then
-		sharedEnv.CatwareTurboSoccerStartupError = reason
-		sharedEnv.CatwareTurboSoccerStartupStatus = "startup failed"
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = reason
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup failed"
 		showStartupPanel(reason)
 	end
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
@@ -116,6 +123,8 @@ end
 
 local AUTOLOAD_FLAG = DIR .. "autoload"
 local AUTOLOAD_SOURCE = DIR .. "autoload-source.lua"
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading game modules"
+showStartupPanel("Carregando os módulos do jogo...")
 
 local function fileExists(path)
 	if type(isfile) ~= "function" then return false end
@@ -144,7 +153,9 @@ local function writeText(path, contents)
 	return ok
 end
 
-local embeddedSource = sharedEnv.CatwareTurboSoccerSource
+local cachedSource = readText(AUTOLOAD_SOURCE)
+local embeddedSource = type(sharedEnv.CatwareTurboSoccerSource) == "string"
+	and sharedEnv.CatwareTurboSoccerSource or cachedSource
 local cacheReady = false
 if type(embeddedSource) == "string" then
 	local writeOk = pcall(function()
@@ -165,22 +176,22 @@ if type(embeddedSource) == "string" then
 			.. 'local env = getgenv() local ok, source = pcall(readfile, ' .. encodedPath .. ') '
 			.. 'if not ok or type(source) ~= "string" then return end '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	else
 		local encodedSource = string.format("%q", embeddedSource)
 		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 			.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	end
 else
 	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwareTurboSoccerStartupError = tostring(fn) env.CatwareTurboSoccerStartupStatus = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-		.. 'local ran, err = pcall(fn) if not ran then env.CatwareTurboSoccerStartupError = tostring(err) env.CatwareTurboSoccerStartupStatus = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+		.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 end
 
 local queued = false
@@ -256,7 +267,7 @@ for name, module in {
 	if not module then table.insert(missingGameModules, name) end
 end
 if #missingGameModules > 0 then
-	sharedEnv.CatwareTurboSoccerStartupError = "Missing game modules: " .. table.concat(missingGameModules, ", ")
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "Missing game modules: " .. table.concat(missingGameModules, ", ")
 end
 
 local function instantiateRemoteModule(source)
@@ -268,6 +279,9 @@ local function instantiateRemoteModule(source)
 end
 local function loadRemoteModule(url, cacheName)
 	local cachePath = DIR .. cacheName
+	local cachedSource = readText(cachePath)
+	local cachedResult = instantiateRemoteModule(cachedSource)
+	if cachedResult ~= nil then return cachedResult end
 	local requestOk, source = pcall(function() return game:HttpGet(url) end)
 	if requestOk and type(source) == "string" then
 		local result = instantiateRemoteModule(source)
@@ -276,162 +290,27 @@ local function loadRemoteModule(url, cacheName)
 			return result
 		end
 	end
-	return instantiateRemoteModule(readText(cachePath))
+	return nil
 end
 
 local UI = {}
-UI.Fluent = loadRemoteModule("https://github.com/StyearX/Fluent-Modded/releases/download/1.6.0/main.lua", "FluentModded-1.6.0.lua")
-UI.InterfaceManager = loadRemoteModule("https://raw.githubusercontent.com/StyearX/Fluent-modded/d87e751788e78db2fb21eeecf4643baeb6202ff9/Addons/InterfaceManager.lua", "FluentModded-InterfaceManager.lua")
-UI.SaveManager = loadRemoteModule("https://raw.githubusercontent.com/StyearX/Fluent-modded/d87e751788e78db2fb21eeecf4643baeb6202ff9/Addons/SaveManager.lua", "FluentModded-SaveManager.lua")
-if type(UI.Fluent) ~= "table" or type(UI.Fluent.CreateWindow) ~= "function"
-	or type(UI.Fluent.Options) ~= "table" or type(UI.InterfaceManager) ~= "table"
-	or type(UI.SaveManager) ~= "table" then
-	stopLoading("Fluent Modded UI modules could not be fetched or loaded")
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading UI modules"
+showStartupPanel("Carregando a interface Obsidian...")
+local OBSIDIAN_REF = "c8dfe653304d0934ce651e156403e397467cb9a0"
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/" .. OBSIDIAN_REF .. "/"
+UI.Library = loadRemoteModule(repo .. "Library.lua", "Obsidian-Library.lua")
+UI.ThemeManager = loadRemoteModule(repo .. "addons/ThemeManager.lua", "Obsidian-ThemeManager.lua")
+UI.SaveManager = loadRemoteModule(repo .. "addons/SaveManager.lua", "Obsidian-SaveManager.lua")
+if type(UI.Library) ~= "table" or type(UI.Library.CreateWindow) ~= "function"
+	or type(UI.Library.Options) ~= "table" or type(UI.Library.Toggles) ~= "table" then
+	stopLoading("Obsidian UI module could not be fetched, compiled, or loaded")
 	return
 end
-
-UI.Fluent.Notify = function() end
-local Options, Toggles = UI.Fluent.Options, {}
-UI.UnloadCallbacks, UI.LibrarySignals = {}, {}
-local Library = { Options = Options, Toggles = Toggles, Unloaded = false }
-UI.Library = Library
-
-function UI.controlDescription(config)
-	return config.Tooltip or config.Description
-end
-
-function UI.registerControl(id, option, isToggle)
-	Options[id] = option
-	if isToggle then Toggles[id] = option end
-	return option
-end
-
-function UI.addKeybind(section, id, config, parentToggle)
-	config = config or {}
-	local keyConfig = {
-		Title = config.Text or config.Title or id,
-		Description = UI.controlDescription(config),
-		Default = config.Default or "RightShift",
-		Mode = config.Mode or "Toggle",
-		Callback = function(active)
-			if config.SyncToggleState and parentToggle and Toggles[parentToggle] then
-				Toggles[parentToggle]:SetValue(active)
-			end
-		end,
-	}
-	return UI.registerControl(id, section:AddKeybind(id, keyConfig), false)
-end
-
-function UI.addColorpicker(section, id, config)
-	config = config or {}
-	return UI.registerControl(id, section:AddColorpicker(id, {
-		Title = config.Text or config.Title or id,
-		Description = UI.controlDescription(config),
-		Default = config.Default,
-	}), false)
-end
-
-function UI.wrapSection(section)
-	local group = {}
-	function group:AddToggle(id, config)
-		config = config or {}
-		local option = UI.registerControl(id, section:AddToggle(id, {
-			Title = config.Text or config.Title or id,
-			Description = UI.controlDescription(config),
-			Default = config.Default == true,
-			Callback = config.Callback,
-		}), true)
-		option.AddKeyPicker = function(_, keyId, keyConfig)
-			return UI.addKeybind(section, keyId, keyConfig, id)
-		end
-		option.AddColorPicker = function(_, colorId, colorConfig)
-			return UI.addColorpicker(section, colorId, colorConfig)
-		end
-		return option
-	end
-	function group:AddSlider(id, config)
-		config = config or {}
-		return UI.registerControl(id, section:AddSlider(id, {
-			Title = config.Text or config.Title or id,
-			Description = UI.controlDescription(config),
-			Default = config.Default,
-			Min = config.Min,
-			Max = config.Max,
-			Rounding = config.Rounding or 0,
-			Callback = config.Callback,
-		}), false)
-	end
-	function group:AddButton(title, callback)
-		return section:AddButton({ Title = title, Callback = callback })
-	end
-	function group:AddLabel(title)
-		local label = section:AddParagraph({ Title = title, Content = "" })
-		label.AddKeyPicker = function(_, id, config)
-			return UI.addKeybind(section, id, config)
-		end
-		return label
-	end
-	return group
-end
-
-function Library:CreateWindow(config)
-	config = config or {}
-	UI.NativeWindow = UI.Fluent:CreateWindow({
-		Title = config.Title or "Catware",
-		SubTitle = "Turbo Soccer",
-		TabWidth = 145,
-		Size = UDim2.fromOffset(700, 640),
-		Acrylic = false,
-		Theme = "Blood Red",
-		Background = false,
-		FolderName = "Catware/TurboSoccer",
-		ScreenGuiName = "CatwareTurboSoccer",
-	})
-	local window = {}
-	function window:AddTab(title, icon)
-		local tab = UI.NativeWindow:AddTab({ Title = title, Icon = icon })
-		tab.AddLeftGroupbox = function(_, name, sectionIcon)
-			return UI.wrapSection(tab:AddSection(name, sectionIcon))
-		end
-		tab.AddRightGroupbox = tab.AddLeftGroupbox
-		return tab
-	end
-	return window
-end
-
-function Library:GiveSignal(signal)
-	if signal then table.insert(UI.LibrarySignals, signal) end
-	return signal
-end
-
-function Library:OnUnload(callback)
-	if type(callback) == "function" then table.insert(UI.UnloadCallbacks, callback) end
-end
-
-function Library:Toggle(show)
-	if not UI.NativeWindow then return end
-	if show == true then
-		UI.NativeWindow:Show()
-	elseif show == false then
-		UI.NativeWindow:Hide()
-	else
-		UI.NativeWindow:Minimize()
-	end
-end
-
-function Library:Unload()
-	if self.Unloaded then return end
-	self.Unloaded = true
-	UI.Fluent.Unloaded = true
-	for _, callback in ipairs(UI.UnloadCallbacks) do pcall(callback) end
-	table.clear(UI.UnloadCallbacks)
-	for _, signal in ipairs(UI.LibrarySignals) do pcall(function() signal:Disconnect() end) end
-	table.clear(UI.LibrarySignals)
-	pcall(function() UI.Fluent:Destroy() end)
-end
-
+local Library = UI.Library
+Library.ForceCheckbox = false
+Library.ShowCustomCursor = false
+local Options, Toggles = Library.Options, Library.Toggles
 local uiReady = false
-
 local live
 local lastMatchAt = -1
 local TICK = 1 / 120
@@ -1123,7 +1002,7 @@ local function adaptiveShotAlignment()
 	if not learningEnabled() then return value end
 	local profile = modeProfile(detectedTeamSize())
 	local metric = profile.actions.shot
-	if metric.samples >= 3 then value += metric.average * 0.05 end
+	if metric.samples >= 3 then value -= metric.average * 0.05 end
 	if profile.peerTouchSamples >= 8 then value -= profile.peerTouchQuality * 0.02 end
 	return math.clamp(value, 0.5, 0.98)
 end
@@ -1417,10 +1296,12 @@ local function strikeOpportunity(st, forceAttack)
 	local shotClear = not shotLaneBlocked(impact, shotDirection)
 	local shotAlignment = vector.dot(vector.normalize(forward), shotDirection)
 	if passTarget then
-		local profile = modeProfile(detectedTeamSize())
+		local mode = detectedTeamSize()
+		local profile = modeProfile(mode)
 		local passMetric = profile.actions.pass
-		local passThreshold = Options.PassShotThreshold.Value - profile.opponentCommitRate * 0.1
-		if passMetric.samples >= 3 then passThreshold -= passMetric.average * 0.08 end
+		local teamShotBias = mode == 3 and 0.18 or mode == 2 and 0.12 or 0
+		local passThreshold = Options.PassShotThreshold.Value - profile.opponentCommitRate * 0.1 - teamShotBias
+		if passMetric.samples >= 3 then passThreshold += passMetric.average * 0.04 end
 		local ownPassOutcomes = profile.ownPassSamples + profile.ownPassMisses
 		if ownPassOutcomes >= 3 then
 			passThreshold += profile.ownPassQuality * 0.08
@@ -1436,7 +1317,9 @@ local function strikeOpportunity(st, forceAttack)
 			return impact, nil, "pass", passTarget, passReceiverIndex
 		end
 	end
-	local shotThreshold = math.clamp(math.min(adaptiveShotAlignment(), 0.72), 0.55, 0.72)
+	local mode = detectedTeamSize()
+	local teamShotBias = mode == 3 and 0.16 or mode == 2 and 0.12 or 0
+	local shotThreshold = math.clamp(math.min(adaptiveShotAlignment(), 0.72) - teamShotBias, 0.46, 0.72)
 	if Toggles.AutoStrike.Value and shotClear and shotAlignment >= shotThreshold then
 		return impact, shotDirection, "shot"
 	end
@@ -1947,12 +1830,8 @@ local function drive(c)
 	local speed = vector.magnitude(st.vel)
 	if kickoffPause and speed < 5 then
 		kickoffAssist.armed = true
-		if detectedTeamSize() > 1 then
-			local arena, kickoffMe = nxArena()
-			kickoffAssist.isTaker = kickoffMe ~= nil and kickoffTaker(arena, kickoffMe)
-		else
-			kickoffAssist.isTaker = false
-		end
+		local arena, kickoffMe = nxArena()
+		kickoffAssist.isTaker = kickoffMe ~= nil and kickoffTaker(arena, kickoffMe)
 	end
 	if not kickoffPause and kickoffAssist.armed then
 		if Toggles.AutoKickoffSupport.Value and not kickoffAssist.isTaker and detectedTeamSize() > 1 then
@@ -2196,8 +2075,9 @@ local function finishLearningTrial(trial)
 	if not me or not ball then return end
 	local state = stateOf(me.car)
 	local reward
-	if (trial.category == "shot" and trial.attack) or (trial.category == "pass" and trial.targetDirection) then
-		local direction = trial.category == "shot" and trial.attack or trial.targetDirection
+	if (trial.category == "shot" and (trial.targetDirection or trial.attack))
+		or (trial.category == "pass" and trial.targetDirection) then
+		local direction = trial.category == "shot" and (trial.targetDirection or trial.attack) or trial.targetDirection
 		local before = vector.dot(trial.ballVelocity, direction)
 		local after = vector.dot(ball.vel, direction)
 		reward = (after - before) / math.max(math.abs(before), math.abs(after), 1)
@@ -2541,7 +2421,167 @@ local function screen(uu)
 	return Vector2.new(v.X, v.Y), on, v.Z
 end
 
+local guiFallback = { texts = {}, lines = {}, drawingSupported = false, nextDrawingProbeAt = 0 }
+function guiFallback.ensureOverlay()
+	if guiFallback.gui and guiFallback.gui.Parent then
+		guiFallback.gui.Enabled = true
+		return true
+	end
+	local parents = {}
+	if type(gethui) == "function" then
+		local ok, parent = pcall(gethui)
+		if ok and parent then table.insert(parents, parent) end
+	end
+	local coreOk, core = pcall(function() return game:GetService("CoreGui") end)
+	if coreOk and core then table.insert(parents, core) end
+	local playerGui = LP and LP:FindFirstChildOfClass("PlayerGui")
+	if playerGui then table.insert(parents, playerGui) end
+	for _, parent in parents do
+		local ok, candidate = pcall(function()
+			local gui = Instance.new("ScreenGui")
+			gui.Name = "CatwareTurboSoccerOverlay"
+			gui.ResetOnSpawn = false
+			gui.IgnoreGuiInset = true
+			gui.DisplayOrder = 999
+			gui.Parent = parent
+			return gui
+		end)
+		if ok and candidate then
+			guiFallback.gui = candidate
+			guiFallback.texts, guiFallback.lines = {}, {}
+			return true
+		end
+	end
+	return false
+end
+
+function guiFallback.getText(index)
+	if not guiFallback.ensureOverlay() then return nil end
+	local label = guiFallback.texts[index]
+	if not label then
+		label = Instance.new("TextLabel")
+		label.Name = "BoostLabel" .. tostring(index)
+		label.AnchorPoint = Vector2.new(0.5, 1)
+		label.Size = UDim2.fromOffset(52, 20)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.Code
+		label.TextSize = 14
+		label.TextStrokeColor3 = Color3.new(0, 0, 0)
+		label.TextStrokeTransparency = 0
+		label.Parent = guiFallback.gui
+		guiFallback.texts[index] = label
+	end
+	return label
+end
+
+function guiFallback.getLine(index)
+	if not guiFallback.ensureOverlay() then return nil end
+	local segment = guiFallback.lines[index]
+	if not segment then
+		segment = Instance.new("Frame")
+		segment.Name = "BallPath" .. tostring(index)
+		segment.AnchorPoint = Vector2.new(0, 0.5)
+		segment.BorderSizePixel = 0
+		segment.Parent = guiFallback.gui
+		guiFallback.lines[index] = segment
+	end
+	return segment
+end
+
+function guiFallback.draw()
+	if not guiFallback.ensureOverlay() then return end
+	local lineCount = 0
+	if Toggles.BallPath.Value and live and live.ball and #path > 1 then
+		local color = Options.PathColor.Value
+		local previous, previousOn = screen(live.ball.body.pos)
+		for _, point in path do
+			local current, currentOn = screen(point.pos)
+			if currentOn and previousOn then
+				lineCount += 1
+				local segment = guiFallback.getLine(lineCount)
+				if segment then
+					local delta = current - previous
+					segment.Position = UDim2.fromOffset(previous.X, previous.Y)
+					segment.Size = UDim2.fromOffset(delta.Magnitude, 2)
+					segment.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+					segment.BackgroundColor3 = color
+					segment.Visible = true
+				end
+			end
+			previous, previousOn = current, currentOn
+		end
+	end
+	for index = lineCount + 1, #guiFallback.lines do
+		if guiFallback.lines[index] then guiFallback.lines[index].Visible = false end
+	end
+	if not guiFallback.landing then
+		guiFallback.landing = Instance.new("Frame")
+		guiFallback.landing.Name = "BallLanding"
+		guiFallback.landing.AnchorPoint = Vector2.new(0.5, 0.5)
+		guiFallback.landing.Size = UDim2.fromOffset(24, 24)
+		guiFallback.landing.BackgroundTransparency = 1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = guiFallback.landing
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 2
+		stroke.Parent = guiFallback.landing
+		guiFallback.landing.Parent = guiFallback.gui
+	end
+	guiFallback.landing.Visible = false
+	if Toggles.BallPath.Value and live and live.ball and #path > 1 then
+		for _, point in path do
+			if point.pos.z < 110 then
+				local position, on = screen(point.pos)
+				if on then
+					guiFallback.landing.Position = UDim2.fromOffset(position.X, position.Y)
+					guiFallback.landing.Visible = true
+					local stroke = guiFallback.landing:FindFirstChildOfClass("UIStroke")
+					if stroke then stroke.Color = Options.PathColor.Value end
+				end
+				break
+			end
+		end
+	end
+	local me = live and live.me
+	local textCount = 0
+	if live and Toggles.BoostESP.Value then
+		for _, entry in live.cars do
+			if entry ~= me and entry.car and not entry.car.isDemoed and entry.car.body then
+				local position, on = screen(entry.car.body.pos + vector.create(0, 0, 90))
+				if on then
+					textCount += 1
+					local label = guiFallback.getText(textCount)
+					if label then
+						label.Text = string.format("%d", math.max(0, math.floor(tonumber(entry.car.boost) or 0)))
+						label.TextColor3 = (me and entry.team == me.team)
+							and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
+						label.Position = UDim2.fromOffset(position.X, position.Y)
+						label.Visible = true
+					end
+				end
+			end
+		end
+	end
+	for index = textCount + 1, #guiFallback.texts do
+		if guiFallback.texts[index] then guiFallback.texts[index].Visible = false end
+	end
+end
+
+function guiFallback.drawingAvailable()
+	if guiFallback.drawingSupported then return true end
+	if os.clock() < guiFallback.nextDrawingProbeAt then return false end
+	guiFallback.nextDrawingProbeAt = os.clock() + 1
+	guiFallback.drawingSupported = text(1) ~= nil
+	return guiFallback.drawingSupported
+end
+
 local function draw()
+	if not guiFallback.drawingAvailable() then
+		guiFallback.draw()
+		return
+	end
+	if guiFallback.gui then guiFallback.gui.Enabled = false end
 	local n = 0
 	ensureBaseDrawings()
 	if landing then landing.Visible = false end
@@ -2599,7 +2639,7 @@ local lastRegionClickAt = 0
 local currentServerFriendIds, friendsInUniverse = {}, {}
 local trackedPartyFriendIds = sharedEnv.CatwareTurboSoccerPartyFriendIds or {}
 local savedFriendsOk, savedFriends = pcall(function()
-	return TeleportService:GetTeleportSetting("CatwareTurboSoccerPartyFriends")
+	return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
 end)
 if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
 	and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
@@ -2679,7 +2719,7 @@ local function trackFriendsInCurrentMatch()
 		for userId in trackedPartyFriendIds do table.insert(ids, userId) end
 		sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
 		pcall(function()
-			TeleportService:SetTeleportSetting("CatwareTurboSoccerPartyFriends", { savedAt = os.time(), ids = ids })
+			TeleportService:SetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63", { savedAt = os.time(), ids = ids })
 		end)
 	end
 end
@@ -3022,6 +3062,13 @@ end)
 
 local Window = Library:CreateWindow({
 	Title = "Catware",
+	Footer = "Turbo Soccer",
+	Icon = "cat",
+	ShowCustomCursor = false,
+	AutoShow = false,
+	Center = true,
+	AlwaysOnTop = true,
+	Size = UDim2.fromOffset(700, 640),
 })
 local Tabs = {
 	Main = Window:AddTab("Main", "car"),
@@ -3171,9 +3218,9 @@ Cars:AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
-	Tooltip = "Learns your shot, pass, aerial, and movement outcomes plus observed player touches and completed teammate receptions. Saves aggregate solo, duo, and trio profiles locally without player names." })
+	Tooltip = "Adjusts shot, pass, aerial, and movement thresholds from your outcomes and aggregate observed touches and receptions. Stores solo, duo, and trio statistics without player names." })
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = fileExists(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
-	Tooltip = "Queues this script for game teleports. Kick and crash recovery uses the desktop monitor plus Madium Auto-Execute." })
+	Tooltip = "Queues this script for supported Roblox place teleports. A moderation kick does not trigger an automatic retry." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = false,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
 MenuGroup:AddToggle("AutoDismissRewards", { Text = "Choose Later on rewards", Default = true,
@@ -3186,7 +3233,9 @@ MenuGroup:AddToggle("AutoPartyQueue", { Text = "Wait for tracked friends between
 	Tooltip = "Tracks Roblox friends observed in your current server, waits for them after a match, then joins their current public server when available." })
 MenuGroup:AddToggle("AggressiveTwoGoalMode", { Text = "Attack more with a 2-goal gap", Default = true,
 	Tooltip = "When the visible score gap is at least two, overrides teammate yielding and pass preference to attempt direct shots, aerials, and flicks." })
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
+Library.ToggleKeybind = Options.MenuKeybind
 
 Toggles.AutoLoad:OnChanged(function(on)
 	if on then
@@ -3213,32 +3262,52 @@ Library:OnUnload(function()
 	for _, d in lines do if d then pcall(function() d:Remove() end) end end
 	for _, d in texts do if d then pcall(function() d:Remove() end) end end
 	if landing then pcall(function() landing:Remove() end) end
+	if guiFallback.gui then pcall(function() guiFallback.gui:Destroy() end) end
 end)
 
-UI.InterfaceManager:SetLibrary(UI.Fluent)
-UI.InterfaceManager:SetFolder("Catware/TurboSoccer")
-UI.InterfaceManager.Settings.MenuKeybind = "RightShift"
-UI.InterfaceManager:BuildInterfaceSection(Tabs["UI Settings"])
-UI.InterfaceManager:LoadSettings()
-UI.SaveManager:SetLibrary(UI.Fluent)
-UI.SaveManager:IgnoreThemeSettings()
-UI.SaveManager:SetIgnoreIndexes({ "AutoLoad" })
-UI.SaveManager:SetFolder("Catware/TurboSoccer")
-UI.SaveManager:BuildConfigSection(Tabs["UI Settings"])
-UI.SaveManager:LoadAutoloadConfig()
-Toggles.AutoSkipReplay:SetValue(false)
-Toggles.AutoAirDribble:SetValue(true)
+if type(UI.ThemeManager) == "table" then
+	pcall(function() UI.ThemeManager:SetLibrary(Library) end)
+	pcall(function() UI.ThemeManager:SetFolder("Catware/TurboSoccer") end)
+	pcall(function()
+		local themes = UI.ThemeManager.BuiltInThemes
+		if themes and themes.Catppuccin then UI.ThemeManager:SetDefaultTheme(themes.Catppuccin[2]) end
+	end)
+	pcall(function() UI.ThemeManager:ApplyToTab(Tabs["UI Settings"]) end)
+end
+if type(UI.SaveManager) == "table" then
+	pcall(function() UI.SaveManager:SetLibrary(Library) end)
+	pcall(function() UI.SaveManager:IgnoreThemeSettings() end)
+	pcall(function() UI.SaveManager:SetIgnoreIndexes({ "MenuKeybind", "AutoLoad" }) end)
+	pcall(function() UI.SaveManager:SetFolder("Catware/TurboSoccer") end)
+	pcall(function() UI.SaveManager:BuildConfigSection(Tabs["UI Settings"]) end)
+	pcall(function() UI.SaveManager:LoadAutoloadConfig() end)
+end
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
-Library:Toggle(true)
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "opening menu"
+local showOk, showError = pcall(function()
+	Library:Toggle(true)
+end)
+if not showOk then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "window visibility failed"
+	showStartupPanel("Não foi possível abrir a janela: " .. tostring(showError))
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	error("Catware window visibility failed: " .. tostring(showError))
+end
+if Library.Toggled ~= true then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "window did not become visible"
+	showStartupPanel("A interface foi criada, mas a janela não ficou visível.")
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	error("Obsidian window did not become visible")
+end
 uiReady = true
 if startupPanel then pcall(function() startupPanel:Destroy() end) end
 startupPanel, startupPanelLabel = nil, nil
 sharedEnv.CatwareTurboSoccerShowStartupFailure = nil
 if #missingGameModules == 0 then
-	sharedEnv.CatwareTurboSoccerStartupError = nil
-	sharedEnv.CatwareTurboSoccerStartupStatus = "ready"
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
 else
-	sharedEnv.CatwareTurboSoccerStartupStatus = "ready; game hooks unavailable"
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready; game hooks unavailable"
 end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 	sharedEnv.CatwareTurboSoccerLoading = nil
