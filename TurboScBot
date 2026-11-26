@@ -1,4 +1,5 @@
-local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
+local sharedEnv = getgenv()
+sharedEnv.CatwareTurboSoccerSource = [========[local SCRIPT_URL = "https://raw.githubusercontent.com/offlinequaseonline-blip/RL-RBX-SCRIPT/refs/heads/main/TurboScBot"
 local DIR = "Catware/TurboSoccer/"
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -6,11 +7,68 @@ local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 local sharedEnv = getgenv()
+local startupPanel, startupPanelLabel
+local function showStartupPanel(message)
+	local ok = pcall(function()
+		local parent
+		if type(gethui) == "function" then
+			local parentOk, candidate = pcall(gethui)
+			if parentOk then parent = candidate end
+		end
+		if not parent then
+			local parentOk, candidate = pcall(function() return game:GetService("CoreGui") end)
+			if parentOk then parent = candidate end
+		end
+		if not parent and Players.LocalPlayer then
+			local playerGuiOk, candidate = pcall(function()
+				return Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			end)
+			if playerGuiOk then parent = candidate end
+		end
+		if not parent then return end
+		if not startupPanel then
+			startupPanel = Instance.new("ScreenGui")
+			startupPanel.Name = "CatwareStartupPanel"
+			startupPanel.ResetOnSpawn = false
+			startupPanel.IgnoreGuiInset = true
+			startupPanel.DisplayOrder = 10000
+			local frame = Instance.new("Frame")
+			frame.Name = "Status"
+			frame.AnchorPoint = Vector2.new(0.5, 0.5)
+			frame.Position = UDim2.fromScale(0.5, 0.5)
+			frame.Size = UDim2.fromOffset(500, 150)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
+			frame.BorderSizePixel = 0
+			frame.Parent = startupPanel
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 8)
+			corner.Parent = frame
+			startupPanelLabel = Instance.new("TextLabel")
+			startupPanelLabel.Name = "Message"
+			startupPanelLabel.BackgroundTransparency = 1
+			startupPanelLabel.Position = UDim2.fromOffset(16, 12)
+			startupPanelLabel.Size = UDim2.new(1, -32, 1, -24)
+			startupPanelLabel.Font = Enum.Font.Code
+			startupPanelLabel.TextColor3 = Color3.fromRGB(245, 245, 250)
+			startupPanelLabel.TextSize = 16
+			startupPanelLabel.TextWrapped = true
+			startupPanelLabel.TextXAlignment = Enum.TextXAlignment.Left
+			startupPanelLabel.TextYAlignment = Enum.TextYAlignment.Center
+			startupPanelLabel.Parent = frame
+		end
+		startupPanelLabel.Text = "Catware não conseguiu abrir o menu.\n" .. tostring(message)
+		startupPanel.Parent = parent
+	end)
+	return ok
+end
+sharedEnv.CatwareTurboSoccerShowStartupFailure = showStartupPanel
 if sharedEnv.CatwareTurboSoccerLoading then
 	local startedAt = sharedEnv.CatwareTurboSoccerLoadingAt
 	if type(startedAt) == "number" and os.clock() - startedAt < 25 then
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "already loading"
+		showStartupPanel("Outra inicialização ainda está em andamento.")
 		return
 	end
 	sharedEnv.CatwareTurboSoccerLoading = nil
@@ -37,6 +95,7 @@ repeat
 until LP or os.clock() >= playerDeadline
 if not LP then
 	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "LocalPlayer unavailable"
+	showStartupPanel("O jogador local não ficou disponível em 15 segundos.")
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
 		sharedEnv.CatwareTurboSoccerLoadingAt = nil
@@ -48,6 +107,7 @@ local function stopLoading(reason)
 	if reason then
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = reason
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup failed"
+		showStartupPanel(reason)
 	end
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
@@ -185,12 +245,21 @@ local Prediction = requirePath(Shared, { "Net", "Prediction" })
 local Protocol = requirePath(Shared, { "Net", "Protocol" })
 local Units = requirePath(Client, { "Units" })
 local Motion = requirePath(Client, { "Motion" })
-if not World or not BallPrediction or not Prediction or not Protocol or not Units or not Motion then
-	stopLoading("Required game modules were not available within 15 seconds")
-	return
+local missingGameModules = {}
+for name, module in {
+	World = World,
+	BallPrediction = BallPrediction,
+	Prediction = Prediction,
+	Protocol = Protocol,
+	Units = Units,
+	Motion = Motion,
+} do
+	if not module then table.insert(missingGameModules, name) end
+end
+if #missingGameModules > 0 then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "Missing game modules: " .. table.concat(missingGameModules, ", ")
 end
 
-local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local function instantiateRemoteModule(source)
 	if type(source) ~= "string" or #source == 0 then return nil end
 	local compileOk, chunk = pcall(loadstring, source)
@@ -211,16 +280,157 @@ local function loadRemoteModule(url, cacheName)
 	return instantiateRemoteModule(readText(cachePath))
 end
 
-local Library = loadRemoteModule(repo .. "Library.lua", "Obsidian-Library.lua")
-local ThemeManager = loadRemoteModule(repo .. "addons/ThemeManager.lua", "Obsidian-ThemeManager.lua")
-local SaveManager = loadRemoteModule(repo .. "addons/SaveManager.lua", "Obsidian-SaveManager.lua")
-if type(Library) ~= "table" or type(Library.CreateWindow) ~= "function"
-	or type(Library.Options) ~= "table" or type(Library.Toggles) ~= "table"
-	or type(ThemeManager) ~= "table" or type(SaveManager) ~= "table" then
-	stopLoading("Obsidian UI modules could not be fetched or loaded")
+local UI = {}
+UI.Fluent = loadRemoteModule("https://github.com/StyearX/Fluent-Modded/releases/download/1.6.0/main.lua", "FluentModded-1.6.0.lua")
+UI.InterfaceManager = loadRemoteModule("https://raw.githubusercontent.com/StyearX/Fluent-modded/d87e751788e78db2fb21eeecf4643baeb6202ff9/Addons/InterfaceManager.lua", "FluentModded-InterfaceManager.lua")
+UI.SaveManager = loadRemoteModule("https://raw.githubusercontent.com/StyearX/Fluent-modded/d87e751788e78db2fb21eeecf4643baeb6202ff9/Addons/SaveManager.lua", "FluentModded-SaveManager.lua")
+if type(UI.Fluent) ~= "table" or type(UI.Fluent.CreateWindow) ~= "function"
+	or type(UI.Fluent.Options) ~= "table" or type(UI.InterfaceManager) ~= "table"
+	or type(UI.SaveManager) ~= "table" then
+	stopLoading("Fluent Modded UI modules could not be fetched or loaded")
 	return
 end
-local Options, Toggles = Library.Options, Library.Toggles
+
+UI.Fluent.Notify = function() end
+local Options, Toggles = UI.Fluent.Options, {}
+UI.UnloadCallbacks, UI.LibrarySignals = {}, {}
+local Library = { Options = Options, Toggles = Toggles, Unloaded = false }
+UI.Library = Library
+
+function UI.controlDescription(config)
+	return config.Tooltip or config.Description
+end
+
+function UI.registerControl(id, option, isToggle)
+	Options[id] = option
+	if isToggle then Toggles[id] = option end
+	return option
+end
+
+function UI.addKeybind(section, id, config, parentToggle)
+	config = config or {}
+	local keyConfig = {
+		Title = config.Text or config.Title or id,
+		Description = UI.controlDescription(config),
+		Default = config.Default or "RightShift",
+		Mode = config.Mode or "Toggle",
+		Callback = function(active)
+			if config.SyncToggleState and parentToggle and Toggles[parentToggle] then
+				Toggles[parentToggle]:SetValue(active)
+			end
+		end,
+	}
+	return UI.registerControl(id, section:AddKeybind(id, keyConfig), false)
+end
+
+function UI.addColorpicker(section, id, config)
+	config = config or {}
+	return UI.registerControl(id, section:AddColorpicker(id, {
+		Title = config.Text or config.Title or id,
+		Description = UI.controlDescription(config),
+		Default = config.Default,
+	}), false)
+end
+
+function UI.wrapSection(section)
+	local group = {}
+	function group:AddToggle(id, config)
+		config = config or {}
+		local option = UI.registerControl(id, section:AddToggle(id, {
+			Title = config.Text or config.Title or id,
+			Description = UI.controlDescription(config),
+			Default = config.Default == true,
+			Callback = config.Callback,
+		}), true)
+		option.AddKeyPicker = function(_, keyId, keyConfig)
+			return UI.addKeybind(section, keyId, keyConfig, id)
+		end
+		option.AddColorPicker = function(_, colorId, colorConfig)
+			return UI.addColorpicker(section, colorId, colorConfig)
+		end
+		return option
+	end
+	function group:AddSlider(id, config)
+		config = config or {}
+		return UI.registerControl(id, section:AddSlider(id, {
+			Title = config.Text or config.Title or id,
+			Description = UI.controlDescription(config),
+			Default = config.Default,
+			Min = config.Min,
+			Max = config.Max,
+			Rounding = config.Rounding or 0,
+			Callback = config.Callback,
+		}), false)
+	end
+	function group:AddButton(title, callback)
+		return section:AddButton({ Title = title, Callback = callback })
+	end
+	function group:AddLabel(title)
+		local label = section:AddParagraph({ Title = title, Content = "" })
+		label.AddKeyPicker = function(_, id, config)
+			return UI.addKeybind(section, id, config)
+		end
+		return label
+	end
+	return group
+end
+
+function Library:CreateWindow(config)
+	config = config or {}
+	UI.NativeWindow = UI.Fluent:CreateWindow({
+		Title = config.Title or "Catware",
+		SubTitle = "Turbo Soccer",
+		TabWidth = 145,
+		Size = UDim2.fromOffset(700, 640),
+		Acrylic = false,
+		Theme = "Blood Red",
+		Background = false,
+		FolderName = "Catware/TurboSoccer",
+		ScreenGuiName = "CatwareTurboSoccer",
+	})
+	local window = {}
+	function window:AddTab(title, icon)
+		local tab = UI.NativeWindow:AddTab({ Title = title, Icon = icon })
+		tab.AddLeftGroupbox = function(_, name, sectionIcon)
+			return UI.wrapSection(tab:AddSection(name, sectionIcon))
+		end
+		tab.AddRightGroupbox = tab.AddLeftGroupbox
+		return tab
+	end
+	return window
+end
+
+function Library:GiveSignal(signal)
+	if signal then table.insert(UI.LibrarySignals, signal) end
+	return signal
+end
+
+function Library:OnUnload(callback)
+	if type(callback) == "function" then table.insert(UI.UnloadCallbacks, callback) end
+end
+
+function Library:Toggle(show)
+	if not UI.NativeWindow then return end
+	if show == true then
+		UI.NativeWindow:Show()
+	elseif show == false then
+		UI.NativeWindow:Hide()
+	else
+		UI.NativeWindow:Minimize()
+	end
+end
+
+function Library:Unload()
+	if self.Unloaded then return end
+	self.Unloaded = true
+	UI.Fluent.Unloaded = true
+	for _, callback in ipairs(UI.UnloadCallbacks) do pcall(callback) end
+	table.clear(UI.UnloadCallbacks)
+	for _, signal in ipairs(UI.LibrarySignals) do pcall(function() signal:Disconnect() end) end
+	table.clear(UI.LibrarySignals)
+	pcall(function() UI.Fluent:Destroy() end)
+end
+
 local uiReady = false
 
 local live
@@ -228,7 +438,11 @@ local lastMatchAt = -1
 local TICK = 1 / 120
 local path = {}
 local PATH_STRIDE = 4
-local ballPred = BallPrediction.new()
+local ballPred
+if BallPrediction and type(BallPrediction.new) == "function" then
+	local predictionOk, prediction = pcall(BallPrediction.new)
+	if predictionOk then ballPred = prediction end
+end
 
 local function fromMatch(P)
 	local m = P.match
@@ -254,8 +468,9 @@ end
 
 local function predictBall(seconds)
 	table.clear(path)
-	if not live then return end
-	ballPred:run(live.ball, seconds, PATH_STRIDE)
+	if not live or not live.ball or not ballPred or type(ballPred.run) ~= "function" then return end
+	local ok = pcall(ballPred.run, ballPred, live.ball, seconds, PATH_STRIDE)
+	if not ok then return end
 	for i = 2, #ballPred.points do
 		table.insert(path, { pos = ballPred.points[i], t = ballPred.times[i] })
 	end
@@ -1977,7 +2192,8 @@ local function updateLearning()
 	end
 end
 
-local origPStep, origWStep = Prediction.step, World.step
+local origPStep = Prediction and Prediction.step
+local origWStep = World and World.step
 local wrappedPStep
 wrappedPStep = function(self, controls, ...)
 	lastMatchAt = os.clock()
@@ -1985,16 +2201,17 @@ wrappedPStep = function(self, controls, ...)
 	live = snapshotOk and snapshot or nil
 	if uiReady and snapshotOk and controls and self.match and self.match.phase == "play" then
 		pcall(drive, controls)
-		pcall(Protocol.quantize, controls)
+		if Protocol and type(Protocol.quantize) == "function" then pcall(Protocol.quantize, controls) end
 	end
 	if uiReady then pcall(updateLearning) end
-	return origPStep(self, controls, ...)
+	if type(origPStep) == "function" then return origPStep(self, controls, ...) end
 end
-Prediction.step = wrappedPStep
+if Prediction and type(origPStep) == "function" then Prediction.step = wrappedPStep end
 local wrappedWStep
 wrappedWStep = function(self, ...)
 	if uiReady and os.clock() - lastMatchAt > 0.25 then
-		local menuOk, atMenu = pcall(Motion.atMenu)
+		local menuOk, atMenu = false, false
+		if Motion and type(Motion.atMenu) == "function" then menuOk, atMenu = pcall(Motion.atMenu) end
 		if menuOk and atMenu then
 			live = nil
 			resetControlState()
@@ -2010,20 +2227,20 @@ wrappedWStep = function(self, ...)
 			end
 		end
 	end
-	return origWStep(self, ...)
+	if type(origWStep) == "function" then return origWStep(self, ...) end
 end
-World.step = wrappedWStep
+if World and type(origWStep) == "function" then World.step = wrappedWStep end
 
 local nextHookCheckAt = 0
 local function ensureControlHooks()
 	local stamp = os.clock()
 	if stamp < nextHookCheckAt then return end
 	nextHookCheckAt = stamp + 0.75
-	if type(Prediction.step) == "function" and Prediction.step ~= wrappedPStep then
+	if Prediction and type(Prediction.step) == "function" and Prediction.step ~= wrappedPStep then
 		origPStep = Prediction.step
 		Prediction.step = wrappedPStep
 	end
-	if type(World.step) == "function" and World.step ~= wrappedWStep then
+	if World and type(World.step) == "function" and World.step ~= wrappedWStep then
 		origWStep = World.step
 		World.step = wrappedWStep
 	end
@@ -2065,7 +2282,13 @@ end
 local function screen(uu)
 	cam = workspace.CurrentCamera or cam
 	if not cam then return Vector2.zero, false end
-	local v, on = cam:WorldToViewportPoint(Units.pos(uu))
+	local position = uu
+	if Units and type(Units.pos) == "function" then
+		local positionOk, converted = pcall(Units.pos, uu)
+		if not positionOk then return Vector2.zero, false end
+		position = converted
+	end
+	local v, on = cam:WorldToViewportPoint(position)
 	return Vector2.new(v.X, v.Y), on, v.Z
 end
 
@@ -2575,15 +2798,8 @@ local conn = RunService.RenderStepped:Connect(function()
 	nx.spent = 0
 end)
 
-local hasExecutor, executorName = pcall(identifyexecutor)
 local Window = Library:CreateWindow({
 	Title = "Catware",
-	Footer = "Turbo Soccer | " .. (hasExecutor and executorName or "Unknown"),
-	Icon = "cat",
-	ShowCustomCursor = false,
-	AutoShow = true,
-	Center = true,
-	AlwaysOnTop = true,
 })
 local Tabs = {
 	Main = Window:AddTab("Main", "car"),
@@ -2725,9 +2941,7 @@ MenuGroup:AddToggle("AutoPartyQueue", { Text = "Wait for tracked friends between
 	Tooltip = "Tracks Roblox friends observed in your current server, waits for them after a match, then joins their current public server when available." })
 MenuGroup:AddToggle("AggressiveTwoGoalMode", { Text = "Attack more with a 2-goal gap", Default = true,
 	Tooltip = "When the visible score gap is at least two, overrides teammate yielding and pass preference to attempt direct shots, aerials, and flicks." })
-MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
-Library.ToggleKeybind = Options.MenuKeybind
 
 Toggles.AutoLoad:OnChanged(function(on)
 	if on then
@@ -2749,31 +2963,62 @@ Library:OnUnload(function()
 	teleportConn:Disconnect()
 	teleportFailedConn:Disconnect()
 	conn:Disconnect()
-	if Prediction.step == wrappedPStep then Prediction.step = origPStep end
-	if World.step == wrappedWStep then World.step = origWStep end
+	if Prediction and Prediction.step == wrappedPStep then Prediction.step = origPStep end
+	if World and World.step == wrappedWStep then World.step = origWStep end
 	for _, d in lines do if d then pcall(function() d:Remove() end) end end
 	for _, d in texts do if d then pcall(function() d:Remove() end) end end
 	if landing then pcall(function() landing:Remove() end) end
 	if boostMarker then pcall(function() boostMarker:Remove() end) end
 end)
 
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "AutoLoad" })
-ThemeManager:SetFolder("Catware/TurboSoccer")
-SaveManager:SetFolder("Catware/TurboSoccer")
-SaveManager:BuildConfigSection(Tabs["UI Settings"])
-ThemeManager:SetDefaultTheme(ThemeManager.BuiltInThemes["Catppuccin"][2])
-ThemeManager:ApplyToTab(Tabs["UI Settings"])
-SaveManager:LoadAutoloadConfig()
+UI.InterfaceManager:SetLibrary(UI.Fluent)
+UI.InterfaceManager:SetFolder("Catware/TurboSoccer")
+UI.InterfaceManager.Settings.MenuKeybind = "RightShift"
+UI.InterfaceManager:BuildInterfaceSection(Tabs["UI Settings"])
+UI.InterfaceManager:LoadSettings()
+UI.SaveManager:SetLibrary(UI.Fluent)
+UI.SaveManager:IgnoreThemeSettings()
+UI.SaveManager:SetIgnoreIndexes({ "AutoLoad" })
+UI.SaveManager:SetFolder("Catware/TurboSoccer")
+UI.SaveManager:BuildConfigSection(Tabs["UI Settings"])
+UI.SaveManager:LoadAutoloadConfig()
 Toggles.AutoSkipReplay:SetValue(false)
 Toggles.AutoAirDribble:SetValue(true)
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
+Library:Toggle(true)
 uiReady = true
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+if startupPanel then pcall(function() startupPanel:Destroy() end) end
+startupPanel, startupPanelLabel = nil, nil
+sharedEnv.CatwareTurboSoccerShowStartupFailure = nil
+if #missingGameModules == 0 then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+else
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready; game hooks unavailable"
+end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then
+	sharedEnv.CatwareTurboSoccerLoading = nil
+	sharedEnv.CatwareTurboSoccerLoadingAt = nil
+end
+]========]
+sharedEnv.CatwareTurboSoccerBootstrap = true
+if not game:IsLoaded() then game.Loaded:Wait() end
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
+local compileOk, fn = pcall(loadstring, sharedEnv.CatwareTurboSoccerSource)
+if not compileOk or type(fn) ~= 'function' then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn)
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed"
+	sharedEnv.CatwareTurboSoccerLoading = nil
+	sharedEnv.CatwareTurboSoccerLoadingAt = nil
+	return
+end
+local runOk, runError = pcall(fn)
+if not runOk then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(runError)
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error"
+	if type(sharedEnv.CatwareTurboSoccerShowStartupFailure) == "function" then
+		pcall(sharedEnv.CatwareTurboSoccerShowStartupFailure, runError)
+	end
 	sharedEnv.CatwareTurboSoccerLoading = nil
 	sharedEnv.CatwareTurboSoccerLoadingAt = nil
 end
