@@ -7,11 +7,24 @@ local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local sharedEnv = getgenv()
-if sharedEnv.CatwareTurboSoccerLoading then return end
+if sharedEnv.CatwareTurboSoccerLoading then
+	local startedAt = sharedEnv.CatwareTurboSoccerLoadingAt
+	if type(startedAt) == "number" and os.clock() - startedAt < 25 then
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "already loading"
+		return
+	end
+	sharedEnv.CatwareTurboSoccerLoading = nil
+end
 local bootToken = {}
 sharedEnv.CatwareTurboSoccerLoading = bootToken
+sharedEnv.CatwareTurboSoccerLoadingAt = os.clock()
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
 task.delay(90, function()
-	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
+		sharedEnv.CatwareTurboSoccerLoading = nil
+		sharedEnv.CatwareTurboSoccerLoadingAt = nil
+	end
 end)
 if sharedEnv.CatwareTurboSoccerUnload then pcall(sharedEnv.CatwareTurboSoccerUnload) end
 
@@ -23,12 +36,23 @@ repeat
 	if not LP then task.wait(0.1) end
 until LP or os.clock() >= playerDeadline
 if not LP then
-	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "LocalPlayer unavailable"
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
+		sharedEnv.CatwareTurboSoccerLoading = nil
+		sharedEnv.CatwareTurboSoccerLoadingAt = nil
+	end
 	return
 end
 
-local function stopLoading()
-	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+local function stopLoading(reason)
+	if reason then
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = reason
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup failed"
+	end
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
+		sharedEnv.CatwareTurboSoccerLoading = nil
+		sharedEnv.CatwareTurboSoccerLoadingAt = nil
+	end
 end
 
 local AUTOLOAD_FLAG = DIR .. "autoload"
@@ -82,22 +106,22 @@ if type(embeddedSource) == "string" then
 			.. 'local env = getgenv() local ok, source = pcall(readfile, ' .. encodedPath .. ') '
 			.. 'if not ok or type(source) ~= "string" then return end '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-			.. 'pcall(fn)'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	else
 		local encodedSource = string.format("%q", embeddedSource)
 		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 			.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-			.. 'pcall(fn)'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	end
 else
 	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then return end '
-		.. 'pcall(fn)'
+		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+		.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 end
 
 local queued = false
@@ -162,27 +186,38 @@ local Protocol = requirePath(Shared, { "Net", "Protocol" })
 local Units = requirePath(Client, { "Units" })
 local Motion = requirePath(Client, { "Motion" })
 if not World or not BallPrediction or not Prediction or not Protocol or not Units or not Motion then
-	stopLoading()
+	stopLoading("Required game modules were not available within 15 seconds")
 	return
 end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local function loadRemoteModule(url)
-	local requestOk, source = pcall(function() return game:HttpGet(url) end)
-	if not requestOk or type(source) ~= "string" then return nil end
+local function instantiateRemoteModule(source)
+	if type(source) ~= "string" or #source == 0 then return nil end
 	local compileOk, chunk = pcall(loadstring, source)
 	if not compileOk or type(chunk) ~= "function" then return nil end
 	local runOk, result = pcall(chunk)
 	return runOk and result or nil
 end
+local function loadRemoteModule(url, cacheName)
+	local cachePath = DIR .. cacheName
+	local requestOk, source = pcall(function() return game:HttpGet(url) end)
+	if requestOk and type(source) == "string" then
+		local result = instantiateRemoteModule(source)
+		if result ~= nil then
+			writeText(cachePath, source)
+			return result
+		end
+	end
+	return instantiateRemoteModule(readText(cachePath))
+end
 
-local Library = loadRemoteModule(repo .. "Library.lua")
-local ThemeManager = loadRemoteModule(repo .. "addons/ThemeManager.lua")
-local SaveManager = loadRemoteModule(repo .. "addons/SaveManager.lua")
+local Library = loadRemoteModule(repo .. "Library.lua", "Obsidian-Library.lua")
+local ThemeManager = loadRemoteModule(repo .. "addons/ThemeManager.lua", "Obsidian-ThemeManager.lua")
+local SaveManager = loadRemoteModule(repo .. "addons/SaveManager.lua", "Obsidian-SaveManager.lua")
 if type(Library) ~= "table" or type(Library.CreateWindow) ~= "function"
 	or type(Library.Options) ~= "table" or type(Library.Toggles) ~= "table"
 	or type(ThemeManager) ~= "table" or type(SaveManager) ~= "table" then
-	stopLoading()
+	stopLoading("Obsidian UI modules could not be fetched or loaded")
 	return
 end
 local Options, Toggles = Library.Options, Library.Toggles
@@ -2541,7 +2576,15 @@ local conn = RunService.RenderStepped:Connect(function()
 end)
 
 local hasExecutor, executorName = pcall(identifyexecutor)
-local Window = Library:CreateWindow({ Title = "Catware", Footer = "Turbo Soccer | " .. (hasExecutor and executorName or "Unknown"), Icon = "cat", ShowCustomCursor = false })
+local Window = Library:CreateWindow({
+	Title = "Catware",
+	Footer = "Turbo Soccer | " .. (hasExecutor and executorName or "Unknown"),
+	Icon = "cat",
+	ShowCustomCursor = false,
+	AutoShow = true,
+	Center = true,
+	AlwaysOnTop = true,
+})
 local Tabs = {
 	Main = Window:AddTab("Main", "car"),
 	Visuals = Window:AddTab("Visuals", "eye"),
@@ -2728,4 +2771,9 @@ Toggles.AutoSkipReplay:SetValue(false)
 Toggles.AutoAirDribble:SetValue(true)
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
 uiReady = true
-if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+if sharedEnv.CatwareTurboSoccerLoading == bootToken then
+	sharedEnv.CatwareTurboSoccerLoading = nil
+	sharedEnv.CatwareTurboSoccerLoadingAt = nil
+end
