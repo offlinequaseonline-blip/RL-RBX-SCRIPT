@@ -6,19 +6,61 @@ local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
-local LP = Players.LocalPlayer
-
 local sharedEnv = getgenv()
 if sharedEnv.CatwareTurboSoccerLoading then return end
 local bootToken = {}
 sharedEnv.CatwareTurboSoccerLoading = bootToken
-task.delay(60, function()
+task.delay(90, function()
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
 end)
 if sharedEnv.CatwareTurboSoccerUnload then pcall(sharedEnv.CatwareTurboSoccerUnload) end
 
+if not game:IsLoaded() then game.Loaded:Wait() end
+local LP
+local playerDeadline = os.clock() + 15
+repeat
+	LP = Players.LocalPlayer
+	if not LP then task.wait(0.1) end
+until LP or os.clock() >= playerDeadline
+if not LP then
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	return
+end
+
+local function stopLoading()
+	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+end
+
 local AUTOLOAD_FLAG = DIR .. "autoload"
 local AUTOLOAD_SOURCE = DIR .. "autoload-source.lua"
+
+local function fileExists(path)
+	if type(isfile) ~= "function" then return false end
+	local ok, exists = pcall(isfile, path)
+	return ok and exists == true
+end
+
+local function readText(path)
+	if not fileExists(path) or type(readfile) ~= "function" then return nil end
+	local ok, contents = pcall(readfile, path)
+	return ok and type(contents) == "string" and contents or nil
+end
+
+local function ensureStorageFolders()
+	if type(isfolder) ~= "function" or type(makefolder) ~= "function" then return false end
+	local ok = pcall(function()
+		if not isfolder("Catware") then makefolder("Catware") end
+		if not isfolder(DIR) then makefolder(DIR) end
+	end)
+	return ok
+end
+
+local function writeText(path, contents)
+	if type(writefile) ~= "function" or not ensureStorageFolders() then return false end
+	local ok = pcall(writefile, path, contents)
+	return ok
+end
+
 local embeddedSource = sharedEnv.CatwareTurboSoccerSource
 local cacheReady = false
 if type(embeddedSource) == "string" then
@@ -77,8 +119,7 @@ end
 
 local function autoLoadEnabled()
 	if sharedEnv.CatwareTurboSoccerBootstrap == true then return true end
-	local ok, enabled = pcall(function() return isfile(AUTOLOAD_FLAG) and readfile(AUTOLOAD_FLAG) == "1" end)
-	return ok and enabled == true
+	return readText(AUTOLOAD_FLAG) == "1"
 end
 
 local teleportConn = LP.OnTeleport:Connect(function(state)
@@ -92,21 +133,60 @@ local teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(p
 	if player == LP then queued = false end
 end)
 
-local Shared = RS:WaitForChild("Shared")
-local Client = LP:WaitForChild("PlayerScripts"):WaitForChild("Client")
-local Sim = Shared:WaitForChild("Sim")
-local World = require(Sim:WaitForChild("World"))
-local BallPrediction = require(Sim:WaitForChild("BallPrediction"))
-local Prediction = require(Shared:WaitForChild("Net"):WaitForChild("Prediction"))
-local Protocol = require(Shared.Net:WaitForChild("Protocol"))
-local Units = require(Client:WaitForChild("Units"))
-local Motion = require(Client:WaitForChild("Motion"))
+local function waitPath(root, names)
+	local node, deadline = root, os.clock() + 15
+	for _, name in names do
+		if not node then return nil end
+		local remaining = deadline - os.clock()
+		if remaining <= 0 then return nil end
+		local ok, child = pcall(function() return node:WaitForChild(name, remaining) end)
+		if not ok or not child then return nil end
+		node = child
+	end
+	return node
+end
+
+local function requirePath(root, names)
+	local moduleScript = waitPath(root, names)
+	if not moduleScript then return nil end
+	local ok, result = pcall(require, moduleScript)
+	return ok and result or nil
+end
+
+local Shared = waitPath(RS, { "Shared" })
+local Client = waitPath(LP, { "PlayerScripts", "Client" })
+local World = requirePath(Shared, { "Sim", "World" })
+local BallPrediction = requirePath(Shared, { "Sim", "BallPrediction" })
+local Prediction = requirePath(Shared, { "Net", "Prediction" })
+local Protocol = requirePath(Shared, { "Net", "Protocol" })
+local Units = requirePath(Client, { "Units" })
+local Motion = requirePath(Client, { "Motion" })
+if not World or not BallPrediction or not Prediction or not Protocol or not Units or not Motion then
+	stopLoading()
+	return
+end
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
-local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+local function loadRemoteModule(url)
+	local requestOk, source = pcall(function() return game:HttpGet(url) end)
+	if not requestOk or type(source) ~= "string" then return nil end
+	local compileOk, chunk = pcall(loadstring, source)
+	if not compileOk or type(chunk) ~= "function" then return nil end
+	local runOk, result = pcall(chunk)
+	return runOk and result or nil
+end
+
+local Library = loadRemoteModule(repo .. "Library.lua")
+local ThemeManager = loadRemoteModule(repo .. "addons/ThemeManager.lua")
+local SaveManager = loadRemoteModule(repo .. "addons/SaveManager.lua")
+if type(Library) ~= "table" or type(Library.CreateWindow) ~= "function"
+	or type(Library.Options) ~= "table" or type(Library.Toggles) ~= "table"
+	or type(ThemeManager) ~= "table" or type(SaveManager) ~= "table" then
+	stopLoading()
+	return
+end
 local Options, Toggles = Library.Options, Library.Toggles
+local uiReady = false
 
 local live
 local lastMatchAt = -1
@@ -149,6 +229,9 @@ end
 local UP = vector.create(0, 0, 1)
 local function clamp1(x) return math.clamp(x, -1, 1) end
 local function flat(v) return vector.create(v.x, v.y, 0) end
+local function kickoffPaused(ball)
+	return ball ~= nil and vector.magnitude(flat(ball.pos)) < 2 and vector.magnitude(flat(ball.vel)) < 5
+end
 local function angleTo(rot, dir)
 	return math.atan2(vector.dot(dir, rot.right), vector.dot(dir, rot.forward))
 end
@@ -405,7 +488,7 @@ local function teamInterceptRank(st, target, interceptTime)
 	local mode = detectedTeamSize()
 	local marginScale = mode == 3 and 1.1 or mode == 2 and 1 or 0
 	local configuredMargin = Options.TeammateMargin.Value
-	local minimumMargin = mode == 3 and 100 or mode == 2 and 85 or 0
+	local minimumMargin = mode == 3 and 75 or mode == 2 and 60 or 0
 	local margin = math.max(configuredMargin, minimumMargin) * marginScale
 		+ math.clamp(learnedDoubleCommitRate[mode] * 15, 0, 15)
 	local rank, leader, leaderDistance = 1, nil, math.huge
@@ -417,9 +500,12 @@ local function teamInterceptRank(st, target, interceptTime)
 			local direction = routeLength > 1 and vector.normalize(toTarget) or vector.create(0, 0, 0)
 			local distance = vector.magnitude(flat(target - (other.pos + other.vel * t)))
 			local approachSpeed = vector.dot(flat(other.vel), direction)
+			local otherSpeed = vector.magnitude(flat(other.vel))
 			local facing = vector.magnitude(flat(other.rot.forward)) > 0.01
 				and vector.dot(vector.normalize(flat(other.rot.forward)), direction) or -1
-			local committed = routeLength < 300 or approachSpeed > 100 or (vector.magnitude(flat(other.vel)) < 100 and facing > 0.65)
+			local committed = routeLength < 170
+				or (approachSpeed > math.max(90, otherSpeed * 0.18) and facing > -0.15)
+				or (otherSpeed < 90 and facing > 0.72 and routeLength < 420)
 			if committed and distance + margin < myDistance then
 				rank += 1
 				if distance < leaderDistance then leader, leaderDistance = e, distance end
@@ -449,11 +535,26 @@ local function applyTeamSupport(c, st, target, rank, leader)
 	if not attack then return false end
 	local me = live and live.me
 	local lateral = vector.create(attack.y, -attack.x, 0)
-	local side = (math.floor(tonumber(me and me.index) or 1) % 2 == 0) and 1 or -1
 	local mode = detectedTeamSize()
 	local baseDepth = Options.TeamSupportDepth.Value
 	local depth = mode == 3 and rank >= 3 and baseDepth * 1.35 or baseDepth
 	local lateralSpacing = Options.TeamSupportOffset.Value * (mode == 3 and 1.5 or 1)
+	local function laneScore(side)
+		local candidate = flat(target) - attack * depth + lateral * side * lateralSpacing
+		local nearestTeammate, nearestOpponent = math.huge, math.huge
+		for _, entry in live.cars do
+			if entry ~= me and entry ~= leader and entry.car and not entry.car.isDemoed then
+				local distance = vector.magnitude(flat(candidate - entry.car.body.pos))
+				if entry.team == me.team then
+					nearestTeammate = math.min(nearestTeammate, distance)
+				elseif entry.team ~= nil then
+					nearestOpponent = math.min(nearestOpponent, distance)
+				end
+			end
+		end
+		return math.min(nearestOpponent, 700) * 0.25 - math.max(0, 320 - nearestTeammate) * 0.8
+	end
+	local side = laneScore(1) >= laneScore(-1) and 1 or -1
 	local support = flat(target) - attack * depth + lateral * side * lateralSpacing
 	local direction = flat(support - st.pos)
 	local distance = vector.magnitude(direction)
@@ -472,6 +573,32 @@ local function applyTeamSupport(c, st, target, rank, leader)
 	c.steer = clamp1(angle / (math.pi / 2))
 	c.handbrake = shouldPowerSlide(st, angle, distance)
 	c.boost = st.boost > 15 and distance > 500 and math.abs(angle) < 0.45
+	return true
+end
+
+local function applyGoalSideShadow(c, st, rank)
+	if not Toggles.AutoGoalShadow or not Toggles.AutoGoalShadow.Value or rank < 2 then return false end
+	local ball = live and live.ball and live.ball.body
+	local attack = attackDirection()
+	if not ball or not attack then return false end
+	local progress = vector.dot(flat(ball.pos), attack)
+	local towardOwnGoal = -vector.dot(flat(ball.vel), attack)
+	if progress > -Options.GoalShadowTrigger.Value or towardOwnGoal < 80 then return false end
+	local depth = math.min(Options.GoalShadowDepth.Value, math.max(180, math.abs(progress) * 0.45))
+	local target = flat(ball.pos) - attack * depth
+	target += vector.create(-target.x * 0.25, 0, 0)
+	local direction = flat(target - st.pos)
+	local distance = vector.magnitude(direction)
+	c.jump, c.boost = false, false
+	if distance < 100 then
+		c.throttle, c.steer, c.handbrake = 0, 0, false
+		return true
+	end
+	local angle = angleTo(st.rot, direction)
+	c.throttle = math.clamp(distance / 420, 0.25, 0.8)
+	c.steer = clamp1(angle / (math.pi / 2))
+	c.handbrake = shouldPowerSlide(st, angle, distance)
+	if not st.isOnGround then recover(c, st, direction) end
 	return true
 end
 
@@ -556,22 +683,42 @@ local function applyAirDribbleControls(c, st, force)
 	local ball = live and live.ball and live.ball.body
 	local attack = attackDirection()
 	if not ball or not attack then return false end
-	local relative = ball.pos - st.pos
-	local distance = vector.magnitude(relative)
-	local front = vector.dot(relative, st.rot.forward)
-	local side = vector.dot(relative, st.rot.right)
-	local height = vector.dot(relative, st.rot.up)
-	if distance > Options.AirDribbleRange.Value or front < 40 or front > Options.AirDribbleRange.Value
-		or math.abs(side) > Options.AirDribbleRange.Value * 0.65 or height < 20 or height > 360 then return false end
-	local target = ball.pos - attack * Options.AirDribbleBehind.Value + UP * 40
+	local leadTime = math.clamp(vector.magnitude(flat(ball.pos - st.pos)) / math.max(vector.magnitude(flat(st.vel)), 300), 0.06, 0.18)
+	local predictedBall = ball.pos + ball.vel * leadTime
+	local predictionError = math.huge
+	for _, point in path do
+		local error = math.abs(point.t - leadTime)
+		if error < predictionError then
+			predictedBall, predictionError = point.pos, error
+		end
+	end
+	local futureCar = st.pos + st.vel * leadTime
+	local relative = predictedBall - futureCar
+	local planarRelative = flat(relative)
+	local distance = vector.magnitude(planarRelative)
+	local lateralAxis = vector.create(attack.y, -attack.x, 0)
+	local forwardGap = vector.dot(planarRelative, attack)
+	local lateralGap = vector.dot(planarRelative, lateralAxis)
+	local height = relative.z
+	if distance > Options.AirDribbleRange.Value or forwardGap < -Options.AirDribbleBehind.Value * 0.6
+		or math.abs(lateralGap) > Options.AirDribbleRange.Value * 0.9
+		or height < 15 or height > Options.AirDribbleVerticalRange.Value then return false end
+	local behind = math.clamp(Options.AirDribbleBehind.Value + math.max(0, forwardGap - 120) * 0.12,
+		Options.AirDribbleBehind.Value, Options.AirDribbleBehind.Value * 1.8)
+	local target = predictedBall - attack * behind - UP * Options.AirDribbleBelow.Value
 	local aim = target - st.pos
 	local planarAim = flat(aim)
 	local aimDistance = vector.magnitude(planarAim)
-	local relativeVelocity = flat(ball.vel - st.vel)
-	local closingSpeed = aimDistance > 1 and -vector.dot(planarAim, relativeVelocity) / aimDistance or 0
+	if aimDistance < 1 then return false end
+	local aimDirection = vector.normalize(aim)
+	local closingSpeed = vector.dot(st.vel - ball.vel, aimDirection)
+	local angle = angleTo(st.rot, planarAim)
 	recover(c, st, aim)
-	c.jump = false
-	c.boost = st.boost > 0 and distance > 160 and closingSpeed < Options.AirDribbleMaxClosing.Value
+	local overspeed = closingSpeed > Options.AirDribbleMaxClosing.Value
+	c.throttle = overspeed and aimDistance < 220 and 0.25 or math.clamp(aimDistance / 360, 0.35, 1)
+	c.jump, c.handbrake = false, false
+	c.boost = st.boost > 0 and distance > 120 and not overspeed
+		and math.abs(angle) < 0.9
 	airDribbleActive = true
 	return true
 end
@@ -579,8 +726,9 @@ end
 local LEARNING_FILE = DIR .. "learning.json"
 local learningData = { version = 1, modes = {} }
 local readLearningOk, savedLearning = pcall(function()
-	if not isfile(LEARNING_FILE) then return nil end
-	return HttpService:JSONDecode(readfile(LEARNING_FILE))
+	local contents = readText(LEARNING_FILE)
+	if not contents then return nil end
+	return HttpService:JSONDecode(contents)
 end)
 if readLearningOk and type(savedLearning) == "table" and savedLearning.version == 1 and type(savedLearning.modes) == "table" then
 	learningData = savedLearning
@@ -684,6 +832,22 @@ local function adaptiveAerialRange()
 	return math.clamp(value, 250, 2200)
 end
 
+local function applyAirInterceptControls(c, st, target, interceptTime, interceptDistance, force)
+	if not Toggles.AutoAirIntercept or not Toggles.AutoAirIntercept.Value
+		or st.isOnGround or st.isFlipping or maneuver or not target or not interceptTime or not interceptDistance then return false end
+	if interceptTime > math.min(Options.AerialMaxTime.Value, 1.15)
+		or interceptDistance > math.min(adaptiveAerialRange(), 900) or st.boost <= 0 then return false end
+	if not force and teammateCloser(st, target, interceptTime) then return false end
+	local delta = target - st.pos
+	local planar = flat(delta)
+	if vector.magnitude(delta) < 110 then return false end
+	local angle = vector.magnitude(planar) > 1 and math.abs(angleTo(st.rot, planar)) or 0
+	recover(c, st, delta)
+	c.throttle, c.jump, c.handbrake = 1, false, false
+	c.boost = st.boost > 0 and interceptDistance > 170 and interceptTime < 0.95 and angle < 1.05
+	return true
+end
+
 local function adaptiveWaveDashLead()
 	local value = Options.WaveDashLead.Value
 	if learningEnabled() then
@@ -775,11 +939,94 @@ local function shotLaneBlocked(impact, attack)
 	return false
 end
 
+local function openClearDirection(impact, attack)
+	local lateral = vector.create(attack.y, -attack.x, 0)
+	local bestDirection, bestScore = attack, -math.huge
+	for _, side in { 0, 1, -1 } do
+		local direction = side == 0 and attack or vector.normalize(attack + lateral * side * 0.6)
+		local clearance = 800
+		for _, entry in live.cars do
+			if entry ~= live.me and entry.team ~= nil and entry.team ~= live.me.team
+				and entry.car and not entry.car.isDemoed then
+				local opponent = entry.car.body
+				local relative = flat(opponent.pos + opponent.vel * 0.45 - impact)
+				local along = vector.dot(relative, direction)
+				if along > 0 and along < 900 then
+					local closest = impact + direction * along
+					clearance = math.min(clearance, vector.magnitude(flat(opponent.pos + opponent.vel * 0.45 - closest)))
+				end
+			end
+		end
+		local score = math.min(clearance, 800) - (side == 0 and 0 or 90)
+		if score > bestScore then bestDirection, bestScore = direction, score end
+	end
+	return bestDirection
+end
+
+local function openShotDirection(impact, attack)
+	local lateral = vector.create(attack.y, -attack.x, 0)
+	local bestDirection, bestScore = attack, -math.huge
+	for _, offset in { 0, 0.22, -0.22, 0.42, -0.42 } do
+		local direction = offset == 0 and attack or vector.normalize(attack + lateral * offset)
+		local clearance = Options.ShotLaneRange.Value
+		for _, entry in live.cars do
+			if entry ~= live.me and entry.team ~= nil and entry.team ~= live.me.team
+				and entry.car and not entry.car.isDemoed then
+				local opponent = entry.car.body
+				local relative = flat(opponent.pos + opponent.vel * 0.35 - impact)
+				local along = vector.dot(relative, direction)
+				if along > 100 and along <= Options.ShotLaneRange.Value then
+					local closest = impact + direction * along
+					clearance = math.min(clearance, vector.magnitude(flat(opponent.pos + opponent.vel * 0.35 - closest)))
+				end
+			end
+		end
+		local score = math.min(clearance, Options.ShotLaneClearance.Value * 3) - math.abs(offset) * 190
+		if score > bestScore then bestDirection, bestScore = direction, score end
+	end
+	return bestDirection
+end
+
+local function applyAirRedirectControls(c, st, target, interceptTime, interceptDistance, force)
+	if not Toggles.AutoAirRedirect or not Toggles.AutoAirRedirect.Value or st.isOnGround
+		or st.isFlipping or maneuver or not target or not interceptTime or not interceptDistance then return false end
+	if interceptTime > Options.AirRedirectWindow.Value or interceptDistance > Options.AirRedirectRange.Value
+		or (not force and teammateCloser(st, target, interceptTime)) then return false end
+	local attack = attackDirection()
+	local ball = live and live.ball and live.ball.body
+	if not attack or not ball then return false end
+	local direction = attack
+	local progress = vector.dot(flat(target), attack)
+	local towardOwnGoal = -vector.dot(flat(ball.vel), attack)
+	if progress < -Options.ClearDepth.Value and towardOwnGoal > Options.ClearIncomingSpeed.Value then
+		direction = openClearDirection(target, attack)
+	elseif shotLaneBlocked(target, attack) then
+		direction = openShotDirection(target, attack)
+		if shotLaneBlocked(target, direction) then direction = openClearDirection(target, attack) end
+	end
+	local redirectPoint = target + direction * Options.AirRedirectDistance.Value
+	local delta = redirectPoint - st.pos
+	local planar = flat(delta)
+	if vector.magnitude(planar) < 1 then return false end
+	local angle = math.abs(angleTo(st.rot, planar))
+	local interceptDirection = vector.normalize(delta)
+	local closingSpeed = vector.dot(st.vel - ball.vel, interceptDirection)
+	recover(c, st, delta)
+	c.throttle, c.jump, c.handbrake = math.clamp(interceptDistance / 260, 0.45, 1), false, false
+	c.boost = st.boost > 0 and interceptDistance > 140
+		and closingSpeed < Options.AirDribbleMaxClosing.Value and angle < 0.95
+	return true
+end
+
 local function applyShotApproachControls(c, st, intercept, interceptDistance)
 	if maneuver or not Toggles.AutoStrike.Value or not st.isOnGround or not intercept or not attackDirection() then return false end
 	if not interceptDistance or interceptDistance > 500 then return false end
 	local attack = attackDirection()
-	if shotLaneBlocked(intercept, attack) then return false end
+	if shotLaneBlocked(intercept, attack) then
+		if not Toggles.AutoAimOpenLane or not Toggles.AutoAimOpenLane.Value then return false end
+		attack = openShotDirection(intercept, attack)
+		if shotLaneBlocked(intercept, attack) then return false end
+	end
 	local forward = flat(st.rot.forward)
 	if vector.magnitude(forward) < 0.01 then return false end
 	local alignment = vector.dot(vector.normalize(forward), attack)
@@ -806,12 +1053,33 @@ local function strikeOpportunity(st, forceAttack)
 		vector.dot(impact - (st.pos + st.vel * 0.15), st.rot.right)
 	local forward = flat(st.rot.forward)
 	if fwd <= 0 or math.abs(side) > Options.ShotLineTolerance.Value or vector.magnitude(forward) < 1 then return nil end
-	local alignment = vector.dot(vector.normalize(forward), attack)
 	local progress = vector.dot(impact, attack)
 	local incoming = vector.dot(ball.vel, attack) < -Options.ClearIncomingSpeed.Value
-	if Toggles.AutoStrike.Value and progress < -Options.ClearDepth.Value and incoming then return impact, attack, "clear" end
+	if Toggles.AutoStrike.Value and progress < -Options.ClearDepth.Value and incoming then
+		local clearDirection = Toggles.AutoSideClear and Toggles.AutoSideClear.Value and openClearDirection(impact, attack) or attack
+		return impact, clearDirection, "clear"
+	end
 	local passTarget, passReceiverIndex = passOpportunity(impact)
-	if forceAttack then return impact, attack, "shot" end
+	if forceAttack then
+		if passTarget and (not Toggles.AutoStrike or not Toggles.AutoStrike.Value) then
+			return impact, nil, "pass", passTarget, passReceiverIndex
+		end
+		if Toggles.AutoStrike and Toggles.AutoStrike.Value then
+			local forcedDirection = Toggles.AutoAimOpenLane and Toggles.AutoAimOpenLane.Value
+				and openShotDirection(impact, attack) or attack
+			if shotLaneBlocked(impact, forcedDirection) then
+				if passTarget then return impact, nil, "pass", passTarget, passReceiverIndex end
+				return nil
+			end
+			return impact, forcedDirection, "shot"
+		end
+		return nil
+	end
+	local blocked = shotLaneBlocked(impact, attack)
+	local shotDirection = blocked and Toggles.AutoAimOpenLane and Toggles.AutoAimOpenLane.Value
+		and openShotDirection(impact, attack) or attack
+	local shotClear = not shotLaneBlocked(impact, shotDirection)
+	local shotAlignment = vector.dot(vector.normalize(forward), shotDirection)
 	if passTarget then
 		local profile = modeProfile(detectedTeamSize())
 		local passMetric = profile.actions.pass
@@ -828,15 +1096,74 @@ local function strikeOpportunity(st, forceAttack)
 			passThreshold -= profile.peerPassMisses / peerPassOutcomes * 0.03
 		end
 		passThreshold = math.clamp(math.min(passThreshold, 0.68), 0.3, 0.68)
-		local blocked = shotLaneBlocked(impact, attack)
-		if blocked or alignment < passThreshold then return impact, nil, "pass", passTarget, passReceiverIndex end
+		if (blocked and not shotClear) or shotAlignment < passThreshold then
+			return impact, nil, "pass", passTarget, passReceiverIndex
+		end
 	end
-	local blocked = shotLaneBlocked(impact, attack)
 	local shotThreshold = math.clamp(math.min(adaptiveShotAlignment(), 0.72), 0.55, 0.72)
-	if Toggles.AutoStrike.Value and alignment >= shotThreshold and (not blocked or not passTarget) then
-		return impact, attack, "shot"
+	if Toggles.AutoStrike.Value and shotClear and shotAlignment >= shotThreshold then
+		return impact, shotDirection, "shot"
 	end
 	return nil
+end
+
+local function applyGroundDribbleControls(c, st)
+	if not Toggles.AutoGroundDribble or not Toggles.AutoGroundDribble.Value or aggressiveLeadMode
+		or maneuver or not st.isOnGround or st.isFlipping or st.rot.up.z < 0.75 then return false end
+	local ball = live and live.ball and live.ball.body
+	local attack = attackDirection()
+	if not ball or not attack or ball.pos.z > 150 then return false end
+	local relative = flat(ball.pos - st.pos)
+	local distance = vector.magnitude(relative)
+	local lateral = vector.create(attack.y, -attack.x, 0)
+	local forwardGap, sideGap = vector.dot(relative, attack), vector.dot(relative, lateral)
+	local carHeading = flat(st.rot.forward)
+	if distance < 70 or distance > 300 or forwardGap < 20 or forwardGap > 300
+		or math.abs(sideGap) > 150 or vector.magnitude(carHeading) < 1
+		or vector.dot(vector.normalize(carHeading), attack) < 0.25
+		or vector.magnitude(flat(ball.vel - st.vel)) > 520 then return false end
+	local passTarget = passOpportunity(ball.pos)
+	if not shotLaneBlocked(ball.pos, attack) or passTarget then return false end
+	local bestSide, bestScore = 1, -math.huge
+	for _, side in { 1, -1 } do
+		local candidate = ball.pos + attack * 220 + lateral * side * 170
+		local nearestOpponent, nearestTeammate = math.huge, math.huge
+		for _, entry in live.cars do
+			if entry ~= live.me and entry.car and not entry.car.isDemoed then
+				local other = entry.car.body
+				local future = other.pos + other.vel * 0.25
+				local separation = vector.magnitude(flat(candidate - future))
+				if entry.team == live.me.team then
+					nearestTeammate = math.min(nearestTeammate, separation)
+				elseif entry.team ~= nil then
+					nearestOpponent = math.min(nearestOpponent, separation)
+				end
+			end
+		end
+		local score = math.min(nearestOpponent, 700) - math.max(0, 220 - nearestTeammate) * 0.5
+		if score > bestScore then bestSide, bestScore = side, score end
+	end
+	local target = ball.pos + attack * 220 + lateral * bestSide * 170
+	local direction = flat(target - st.pos)
+	if vector.magnitude(direction) < 1 then return false end
+	local angle = angleTo(st.rot, direction)
+	c.throttle = math.clamp(distance / 420, 0.35, 0.68)
+	c.steer, c.jump, c.boost, c.handbrake = clamp1(angle / (math.pi / 2)), false, false, false
+	return true
+end
+
+local function applyApproachBrake(c, st, target)
+	if not Toggles.AutoApproachBrake or not Toggles.AutoApproachBrake.Value
+		or not st.isOnGround or st.isFlipping or maneuver or not target then return false end
+	local direction = flat(target - st.pos)
+	local distance = vector.magnitude(direction)
+	local speed = vector.magnitude(flat(st.vel))
+	if distance > 180 or speed < Options.ApproachBrakeSpeed.Value or distance < 25 then return false end
+	local closingSpeed = vector.dot(flat(st.vel), vector.normalize(direction))
+	if closingSpeed < Options.ApproachBrakeSpeed.Value * 0.62 then return false end
+	c.throttle = math.min(c.throttle, 0.18)
+	c.boost, c.handbrake = false, false
+	return true
 end
 
 local function flickTarget(st, forceAttack)
@@ -943,7 +1270,6 @@ end
 
 local function routeToBoostPad(c, st)
 	boostRouteTarget = nil
-	if Toggles.NextoBot.Value then return false end
 	local target = boostPadTarget(st)
 	if not target then return false end
 	local direction = flat(target - st.pos)
@@ -963,20 +1289,17 @@ local NX
 local REPO = "https://gitlab.com/azulacs/catware-blox-league/-/raw/main/"
 local NEXTO_VERSION = "2"
 local STAMP = DIR .. "nexto.version"
-local fresh = isfile(STAMP) and readfile(STAMP) == NEXTO_VERSION
+local fresh = readText(STAMP) == NEXTO_VERSION
 local function source(name)
-	if fresh and isfile(DIR .. name) then return readfile(DIR .. name) end
+	local cached = fresh and readText(DIR .. name)
+	if cached then return cached end
 	local src = game:HttpGet(REPO .. name)
-	pcall(function()
-		if not isfolder("Catware") then makefolder("Catware") end
-		if not isfolder(DIR) then makefolder(DIR) end
-		writefile(DIR .. name, src)
-	end)
+	writeText(DIR .. name, src)
 	return src
 end
 pcall(function()
 	NX = loadstring(source("nexto.lua"))().load(loadstring(source("nexto_weights.lua"))())
-	if not fresh then pcall(writefile, STAMP, NEXTO_VERSION) end
+	if not fresh then writeText(STAMP, NEXTO_VERSION) end
 end)
 local nx = { action = {0,0,0,0,0,0,0,0}, nextTick = 0, job = nil, kick = -1, lastGround = {}, spent = 0, deadline = 0 }
 
@@ -1048,7 +1371,7 @@ local function nextoControls(c, st)
 	end
 	local a = nx.action
 	local ball = live.ball.body
-	local kickoffPause = ball.pos.x == 0 and ball.pos.y == 0 and vector.magnitude(ball.vel) == 0
+	local kickoffPause = kickoffPaused(ball)
 	if kickoffPause then
 		local speed = vector.magnitude(st.vel)
 		if speed < 5 then nx.kickArmed = true end
@@ -1110,6 +1433,11 @@ local function drive(c)
 				return
 			end
 			if not Toggles.NextoTacticalAssists or not Toggles.NextoTacticalAssists.Value then
+				if applyAirDribbleControls(c, st, false) then return end
+				local airTarget, airTime, airDistance = bestBallTarget(st)
+				if applyAirRedirectControls(c, st, airTarget, airTime, airDistance, aggressiveLeadMode) then return end
+				if applyAirInterceptControls(c, st, airTarget, airTime, airDistance, aggressiveLeadMode) then return end
+				if applyGroundDribbleControls(c, st) then return end
 				if aggressiveLeadMode then
 					local target, interceptTime, interceptDistance = bestBallTarget(st)
 					local yielding = not aggressiveLeadMode and target and teammateCloser(st, target, interceptTime) or false
@@ -1125,14 +1453,16 @@ local function drive(c)
 					end
 					if not yielding and (Toggles.AutoStrike.Value or Toggles.AutoPass.Value)
 						and st.isOnGround and c.throttle > 0.4 and now() >= strikeReadyAt then
-						local impact, attack, kind = strikeOpportunity(st, true)
-						if impact and attack and kind and startDodge(st, st.pos + attack * 100, kind, false)
+						local impact, attack, kind, passTarget, passReceiverIndex = strikeOpportunity(st, true)
+						local strikeTarget = kind == "pass" and passTarget or attack and (st.pos + attack * 100)
+						if impact and strikeTarget and kind and startDodge(st, strikeTarget, kind, false, passReceiverIndex)
 							and runManeuver(c, st) then
 							strikeReadyAt = now() + 1.0
 							return
 						end
 					end
 				end
+				if applyApproachBrake(c, st, airTarget) then return end
 				return
 			end
 			if c.handbrake and not shouldPowerSlide(st, c.steer) then c.handbrake = false end
@@ -1142,6 +1472,7 @@ local function drive(c)
 			local yielding, teamRank, teamLeader = false, 1, nil
 			if target and not aggressiveLeadMode then yielding, teamRank, teamLeader = teammateCloser(st, target, interceptTime) end
 			if yielding then
+				if applyGoalSideShadow(c, st, teamRank) then return end
 				if not applyTeamSupport(c, st, target, teamRank, teamLeader) then
 					c.throttle = math.clamp(c.throttle, -0.2, 0.25)
 					c.jump, c.boost, c.handbrake = false, false, false
@@ -1166,7 +1497,13 @@ local function drive(c)
 					end
 				end
 				if not maneuver and applyShotApproachControls(c, st, target, target and vector.magnitude(flat(target - st.pos)) or nil) then return end
-			if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then return end
+				if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then return end
+				if not yielding and applyAirRedirectControls(c, st, target, interceptTime,
+					target and vector.magnitude(target - st.pos) or nil, aggressiveLeadMode) then return end
+				if not yielding and applyAirInterceptControls(c, st, target, interceptTime,
+					target and vector.magnitude(target - st.pos) or nil, aggressiveLeadMode) then return end
+				if not yielding and applyGroundDribbleControls(c, st) then return end
+				if not yielding and applyApproachBrake(c, st, target) then return end
 			end
 		end
 		return
@@ -1188,17 +1525,16 @@ local function drive(c)
 	lastJumpInput = userJump
 	if st.isOnGround and jumpPressed then lastGroundJumpAt = now() end
 	local ball = live.ball and live.ball.body
-	local kickoffPause = ball and ball.pos.x == 0 and ball.pos.y == 0 and vector.magnitude(ball.vel) == 0
+	local kickoffPause = kickoffPaused(ball)
 	local speed = vector.magnitude(st.vel)
 	if kickoffPause and speed < 5 then kickoffAssist.armed = true end
 	if Toggles.AutoSpeedFlip.Value and kickoffAssist.armed and not kickoffAssist.locked and speed > adaptiveKickoffStartSpeed() then
-		kickoffAssist.locked = true
 		if st.isOnGround then
 			local arena, kickoffMe = nxArena()
 			if kickoffMe and kickoffTaker(arena, kickoffMe) then
 				local side = st.pos.x >= ball.pos.x and 1 or -1
 				local target = st.pos + flat(st.rot.forward) * 100 + flat(st.rot.right) * (100 * side)
-				startDodge(st, target, "speedFlip")
+				kickoffAssist.locked = startDodge(st, target, "speedFlip")
 			end
 		end
 	end
@@ -1214,11 +1550,21 @@ local function drive(c)
 	local intercept, interceptTime, interceptDistance = bestBallTarget(st)
 	local yielding, teamRank, teamLeader = false, 1, nil
 	if intercept and not aggressiveLeadMode then yielding, teamRank, teamLeader = teammateCloser(st, intercept, interceptTime) end
-	if yielding and applyTeamSupport(c, st, intercept, teamRank, teamLeader) then
+	if yielding then
+		if applyGoalSideShadow(c, st, teamRank) or applyTeamSupport(c, st, intercept, teamRank, teamLeader) then
+			lastJumpInput = c.jump == true
+			return
+		end
+	end
+	if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then
 		lastJumpInput = c.jump == true
 		return
 	end
-	if not yielding and applyAirDribbleControls(c, st, aggressiveLeadMode) then
+	if not yielding and applyAirRedirectControls(c, st, intercept, interceptTime, interceptDistance, aggressiveLeadMode) then
+		lastJumpInput = c.jump == true
+		return
+	end
+	if not yielding and applyAirInterceptControls(c, st, intercept, interceptTime, interceptDistance, aggressiveLeadMode) then
 		lastJumpInput = c.jump == true
 		return
 	end
@@ -1253,6 +1599,10 @@ local function drive(c)
 		end
 	end
 	if not yielding and applyShotApproachControls(c, st, intercept, interceptDistance) then
+		lastJumpInput = c.jump == true
+		return
+	end
+	if not yielding and applyGroundDribbleControls(c, st) then
 		lastJumpInput = c.jump == true
 		return
 	end
@@ -1309,6 +1659,7 @@ local function drive(c)
 	end
 	if runManeuver(c, st) then return end
 	if routeToBoostPad(c, st) then return end
+	if applyApproachBrake(c, st, intercept) then return end
 	if Toggles.AutoAirFollow.Value and not st.isOnGround and not st.isFlipping and c.boost
 		and math.abs(c.pitch) + math.abs(c.yaw) + math.abs(c.roll) < 0.1
 		and intercept and interceptTime <= Options.AerialMaxTime.Value
@@ -1370,20 +1721,21 @@ local function finishLearningTrial(trial)
 		local direction = trial.category == "shot" and trial.attack or trial.targetDirection
 		local before = vector.dot(trial.ballVelocity, direction)
 		local after = vector.dot(ball.vel, direction)
-		reward = unitValue((after - before) / math.max(math.abs(before), math.abs(after), 1))
+		reward = (after - before) / math.max(math.abs(before), math.abs(after), 1)
 	elseif trial.category == "waveDash" or trial.category == "speedFlip" then
 		local speed = vector.magnitude(flat(state.vel))
-		reward = unitValue((speed - trial.speed) / math.max(trial.speed, 1))
+		reward = (speed - trial.speed) / math.max(trial.speed, 1)
 	elseif trial.category == "challenge" or trial.category == "airDribble" then
 		local distance = vector.magnitude(flat(ball.pos - state.pos))
 		local closeness = unitValue((trial.distance - distance) / math.max(trial.distance, 1))
 		local progress = trial.attack and vector.dot(flat(ball.pos - trial.ballPosition), trial.attack) or 0
 		local velocityProgress = trial.attack and vector.dot(flat(ball.vel - trial.ballVelocity), trial.attack) or 0
-		reward = unitValue(closeness * 0.35 + progress / 450 * 0.3 + velocityProgress / 900 * 0.35)
+		reward = closeness * 0.35 + progress / 450 * 0.3 + velocityProgress / 900 * 0.35
 	else
 		local distance = vector.magnitude(flat(ball.pos - state.pos))
-		reward = unitValue((trial.distance - distance) / math.max(trial.distance, 1))
+		reward = (trial.distance - distance) / math.max(trial.distance, 1)
 	end
+	reward = unitValue(reward or 0)
 	local metric = modeProfile(trial.mode).actions[trial.category]
 	metric.samples += 1
 	local rate = 1 / math.min(metric.samples, 8)
@@ -1594,25 +1946,33 @@ local origPStep, origWStep = Prediction.step, World.step
 local wrappedPStep
 wrappedPStep = function(self, controls, ...)
 	lastMatchAt = os.clock()
-	live = fromMatch(self)
-	if controls and self.match.phase == "play" then
-		drive(controls)
-		Protocol.quantize(controls)
+	local snapshotOk, snapshot = pcall(fromMatch, self)
+	live = snapshotOk and snapshot or nil
+	if uiReady and snapshotOk and controls and self.match and self.match.phase == "play" then
+		pcall(drive, controls)
+		pcall(Protocol.quantize, controls)
 	end
-	pcall(updateLearning)
+	if uiReady then pcall(updateLearning) end
 	return origPStep(self, controls, ...)
 end
 Prediction.step = wrappedPStep
 local wrappedWStep
 wrappedWStep = function(self, ...)
-	if os.clock() - lastMatchAt > 0.25 then
-		if Motion.atMenu() then
+	if uiReady and os.clock() - lastMatchAt > 0.25 then
+		local menuOk, atMenu = pcall(Motion.atMenu)
+		if menuOk and atMenu then
 			live = nil
 			resetControlState()
 			nx.job = nil
-		else
-			live = fromWorld(self)
-			drive(self.car.controls)
+		elseif menuOk then
+			local worldOk, worldState = pcall(fromWorld, self)
+			if worldOk then
+				live = worldState
+				local controls = self.car and self.car.controls
+				if controls then pcall(drive, controls) end
+			else
+				live = nil
+			end
 		end
 	end
 	return origWStep(self, ...)
@@ -1636,33 +1996,49 @@ end
 
 local cam = workspace.CurrentCamera
 local lines, texts = {}, {}
-local landing = Drawing.new("Circle")
-landing.Thickness, landing.NumSides, landing.Filled = 2, 24, false
-local boostMarker = Drawing.new("Circle")
-boostMarker.Thickness, boostMarker.NumSides, boostMarker.Filled = 2, 20, false
+local function newDrawing(kind)
+	if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then return nil end
+	local ok, object = pcall(Drawing.new, kind)
+	return ok and object or nil
+end
+
+local landing = newDrawing("Circle")
+if landing then landing.Thickness, landing.NumSides, landing.Filled = 2, 24, false end
+local boostMarker = newDrawing("Circle")
+if boostMarker then boostMarker.Thickness, boostMarker.NumSides, boostMarker.Filled = 2, 20, false end
 
 local function line(i)
 	local l = lines[i]
-	if not l then l = Drawing.new("Line") l.Thickness = 2 lines[i] = l end
+	if not l then
+		l = newDrawing("Line")
+		if not l then return nil end
+		l.Thickness = 2
+		lines[i] = l
+	end
 	return l
 end
 local function text(i)
 	local t = texts[i]
-	if not t then t = Drawing.new("Text") t.Size, t.Center, t.Outline = 16, true, true texts[i] = t end
+	if not t then
+		t = newDrawing("Text")
+		if not t then return nil end
+		t.Size, t.Center, t.Outline = 16, true, true
+		texts[i] = t
+	end
 	return t
 end
 local function screen(uu)
 	cam = workspace.CurrentCamera or cam
 	if not cam then return Vector2.zero, false end
 	local v, on = cam:WorldToViewportPoint(Units.pos(uu))
-	return Vector2.new(v.X, v.Y), on
+	return Vector2.new(v.X, v.Y), on, v.Z
 end
 
 local function draw()
 	local n = 0
-	landing.Visible = false
-	boostMarker.Visible = false
-	if Toggles.BallPath.Value and #path > 1 then
+	if landing then landing.Visible = false end
+	if boostMarker then boostMarker.Visible = false end
+	if Toggles.BallPath.Value and live and live.ball and #path > 1 then
 		local col = Options.PathColor.Value
 		local prev, prevOn = screen(live.ball.body.pos)
 		for _, pt in path do
@@ -1670,15 +2046,15 @@ local function draw()
 			if on and prevOn then
 				n += 1
 				local l = line(n)
-				l.From, l.To, l.Color, l.Visible = prev, s, col, true
+				if l then l.From, l.To, l.Color, l.Visible = prev, s, col, true end
 			end
 			prev, prevOn = s, on
 		end
 		for _, pt in path do
 			if pt.pos.z < 110 then
-				local s, on = screen(pt.pos)
-				if on then
-					landing.Position, landing.Radius, landing.Color, landing.Visible = s, 12, col, true
+				local s, on, depth = screen(pt.pos)
+				if on and landing then
+					landing.Position, landing.Radius, landing.Color, landing.Visible = s, math.clamp(12000 / math.max(depth, 1), 5, 22), col, true
 				end
 				break
 			end
@@ -1686,7 +2062,7 @@ local function draw()
 	end
 	if boostRouteTarget and live and Toggles.AutoBoostRoute.Value then
 		local point, onScreen = screen(boostRouteTarget)
-		if onScreen then
+		if onScreen and boostMarker then
 			boostMarker.Position, boostMarker.Radius = point, 15
 			boostMarker.Color, boostMarker.Visible = Color3.fromRGB(85, 230, 155), true
 		end
@@ -1701,14 +2077,16 @@ local function draw()
 				if on then
 					n += 1
 					local l = line(n)
-					local allied = e.team == me.team
-					l.From, l.To = origin, point
-					l.Color, l.Visible = allied and Color3.fromRGB(75, 170, 255) or Color3.fromRGB(255, 90, 80), true
+					if l then
+						local allied = e.team == me.team
+						l.From, l.To = origin, point
+						l.Color, l.Visible = allied and Color3.fromRGB(75, 170, 255) or Color3.fromRGB(255, 90, 80), true
+					end
 				end
 			end
 		end
 	end
-	for i = n + 1, #lines do lines[i].Visible = false end
+	for i = n + 1, #lines do if lines[i] then lines[i].Visible = false end end
 
 	local m = 0
 	if live and ((Toggles.CarESP and Toggles.CarESP.Value) or Toggles.BoostESP.Value) then
@@ -1718,19 +2096,21 @@ local function draw()
 				if on then
 					m += 1
 					local t = text(m)
-					local allied = me and e.team == me.team
-					local distance = me and math.floor(vector.magnitude(flat(e.car.body.pos - me.car.body.pos))) or 0
-					local role = allied and "ALLY" or "OPP"
-					local label = Toggles.CarESP and Toggles.CarESP.Value and string.format("%s %duu", role, distance) or role
-					if Toggles.BoostESP.Value then label ..= string.format(" | BOOST %d", math.floor(e.car.boost)) end
-					t.Text = label
-					t.Color = allied and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
-					t.Position, t.Visible = s, true
+					if t then
+						local allied = me and e.team == me.team
+						local distance = me and math.floor(vector.magnitude(flat(e.car.body.pos - me.car.body.pos))) or 0
+						local role = allied and "ALLY" or "OPP"
+						local label = Toggles.CarESP and Toggles.CarESP.Value and string.format("%s %duu", role, distance) or role
+						if Toggles.BoostESP.Value then label ..= string.format(" | BOOST %d", math.floor(e.car.boost)) end
+						t.Text = label
+						t.Color = allied and Color3.fromRGB(90, 170, 255) or Color3.fromRGB(255, 110, 60)
+						t.Position, t.Visible = s, true
+					end
 				end
 			end
 		end
 	end
-	for i = m + 1, #texts do texts[i].Visible = false end
+	for i = m + 1, #texts do if texts[i] then texts[i].Visible = false end end
 end
 
 local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt, lastRewardClickAt = 0, 0, 0, 0
@@ -2144,11 +2524,14 @@ local function autoAdvanceUi()
 end
 
 local conn = RunService.RenderStepped:Connect(function()
+	if not uiReady then nx.spent = 0 return end
 	local ok = pcall(function()
 		local want = Toggles.BallPath.Value or Toggles.AutoFlip.Value
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
 			or Toggles.AutoStrike.Value or Toggles.AutoPass.Value or Toggles.AutoPassReceive.Value
-			or Toggles.AutoAirDribble.Value or Toggles.AutoAirFollow.Value
+			or Toggles.AutoAirDribble.Value or Toggles.AutoAirFollow.Value or Toggles.AutoAirIntercept.Value
+			or Toggles.AutoAirRedirect.Value
+			or Toggles.AutoWaveDash.Value or Toggles.AutoWallShot.Value
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
 		ensureControlHooks()
 		draw()
@@ -2169,7 +2552,7 @@ local Bot = Tabs.Main:AddLeftGroupbox("Bot", "bot")
 Bot:AddToggle("NextoBot", { Text = "Nexto (neural bot)", Default = false, Risky = true, Tooltip = "Nexto by Rolv-Arild et al., CC BY-NC-SA 4.0." })
 	:AddKeyPicker("NextoBotKey", { Default = "N", SyncToggleState = true, Mode = "Toggle", Text = "Nexto" })
 Bot:AddToggle("NextoTacticalAssists", { Text = "Tactical overrides for Nexto", Default = false,
-	Tooltip = "Off preserves Nexto's trained controls. On lets custom pass, shot, team rotation, and air-dribble assists override it." })
+	Tooltip = "Off preserves Nexto except individually enabled air-dribble, aerial-intercept, and ground-carry assists. On enables all custom pass, shot, and rotation logic." })
 
 local Assist = Tabs.Main:AddRightGroupbox("Assists", "hand-helping")
 local Mechanics = Tabs.Main:AddLeftGroupbox("Mechanics", "car")
@@ -2202,7 +2585,7 @@ Mechanics:AddSlider("BoostRouteMaxRange", { Text = "Boost pad route range (uu)",
 Mechanics:AddSlider("BoostRouteBallBuffer", { Text = "Keep this far from ball (uu)", Default = 550, Min = 250, Max = 900, Rounding = 0 })
 Assist:AddToggle("AutoFlip", { Text = "Auto flip into ball", Default = true, Tooltip = "Front/diagonal dodge when the ball is about to reach you" })
 Assist:AddSlider("FlipRange", { Text = "Flip range (uu)", Default = 240, Min = 150, Max = 450, Rounding = 0 })
-Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 90, Min = 0, Max = 150, Rounding = 0,
+	Assist:AddSlider("TeammateMargin", { Text = "Teammate lead margin (uu)", Default = 60, Min = 0, Max = 150, Rounding = 0,
 	Tooltip = "Yields only when an ally is actually approaching and has a clear projected distance advantage." })
 Assist:AddToggle("TeamCoordination", { Text = "Yield when teammate reaches first", Default = true,
 	Tooltip = "Yields only when an ally is moving into the same intercept and has a clear route advantage; otherwise keeps challenging." })
@@ -2210,9 +2593,20 @@ Assist:AddToggle("TeamSupportRotation", { Text = "Rotate to support position", D
 	Tooltip = "When an ally has the better ball route, moves to a spaced position behind the predicted intercept. In trio, the third car holds a deeper line." })
 Assist:AddSlider("TeamSupportDepth", { Text = "Support depth (uu)", Default = 220, Min = 100, Max = 800, Rounding = 0 })
 Assist:AddSlider("TeamSupportOffset", { Text = "Support side spacing (uu)", Default = 180, Min = 0, Max = 500, Rounding = 0 })
+Assist:AddToggle("AutoGoalShadow", { Text = "Shadow the goal side", Default = true,
+	Tooltip = "When a teammate is closer and the ball is rolling deep toward your goal, holds a position between the ball and goal instead of following the same challenge." })
+Assist:AddSlider("GoalShadowTrigger", { Text = "Goal shadow starts beyond (uu)", Default = 500, Min = 200, Max = 1400, Rounding = 0 })
+Assist:AddSlider("GoalShadowDepth", { Text = "Goal shadow spacing (uu)", Default = 420, Min = 180, Max = 800, Rounding = 0 })
+Assist:AddToggle("AutoApproachBrake", { Text = "Brake before a fast intercept", Default = true,
+	Tooltip = "Cuts boost and throttle near a predicted ground intercept when speed is high, reducing overshoot and sideways drift." })
+Assist:AddSlider("ApproachBrakeSpeed", { Text = "Brake above speed (uu/s)", Default = 700, Min = 400, Max = 1400, Rounding = 0 })
 Assist:AddToggle("AutoRecover", { Text = "Auto air recovery", Default = true, Tooltip = "Lands you on wheels when you're not touching air controls" })
 local Strike = Tabs.Main:AddRightGroupbox("Shot mechanics", "target")
 Strike:AddToggle("AutoStrike", { Text = "Smart shot / defensive clear", Default = true, Tooltip = "When you drive into a clean ball line, flips toward the opponent goal; clears an incoming ball from your half" })
+Strike:AddToggle("AutoAimOpenLane", { Text = "Aim around a shot blocker", Default = true,
+	Tooltip = "When the direct shot line is blocked and no safe pass is selected, makes a small left/right aim adjustment toward the more open lane." })
+Strike:AddToggle("AutoSideClear", { Text = "Clear through the open side", Default = true,
+	Tooltip = "For defensive clears, predicts opponent positions and chooses the least blocked lane; falls back to the direct clear." })
 Strike:AddToggle("InvertAttackDirection", { Text = "Invert goal direction", Default = false, Tooltip = "Turn on if the shot/clear aim points toward your own goal in this game's team mapping" })
 Strike:AddSlider("ShotAlignment", { Text = "Shot heading alignment", Default = 0.66, Min = 0.5, Max = 0.98, Rounding = 2 })
 Strike:AddSlider("ShotLineTolerance", { Text = "Shot line side tolerance (uu)", Default = 80, Min = 30, Max = 180, Rounding = 0 })
@@ -2245,11 +2639,22 @@ Strike:AddSlider("FlickPower", { Text = "Flick throttle / boost power", Default 
 Strike:AddSlider("ShotPower", { Text = "Shot throttle / boost power", Default = 0.9, Min = 0.1, Max = 1, Rounding = 2 })
 Strike:AddSlider("PassPower", { Text = "Pass throttle / boost power", Default = 0.62, Min = 0.1, Max = 1, Rounding = 2 })
 Strike:AddToggle("AutoAirFollow", { Text = "Air intercept follow", Default = true, Tooltip = "While you hold boost in the air, aims at the predicted ball intercept when a teammate is not closer" })
-Strike:AddToggle("AutoAirDribble", { Text = "Air dribble control", Default = false,
-	Tooltip = "When the ball is close, ahead, and above the car, controls the approach from behind the ball toward the attacking side" })
+Strike:AddToggle("AutoAirIntercept", { Text = "Auto aerial intercept / redirect", Default = true,
+	Tooltip = "In the air, aligns to a near predicted intercept and boosts only when the approach is aligned and no teammate has the better route." })
+Strike:AddToggle("AutoAirRedirect", { Text = "Air redirect through open lane", Default = true,
+	Tooltip = "At a close aerial intercept, aims through the predicted ball toward an open shot lane or a safe defensive clear." })
+Strike:AddSlider("AirRedirectRange", { Text = "Air redirect range (uu)", Default = 500, Min = 220, Max = 900, Rounding = 0 })
+Strike:AddSlider("AirRedirectWindow", { Text = "Air redirect time window (s)", Default = 0.55, Min = 0.2, Max = 1.2, Rounding = 2 })
+Strike:AddSlider("AirRedirectDistance", { Text = "Air redirect follow-through (uu)", Default = 180, Min = 80, Max = 350, Rounding = 0 })
+Strike:AddToggle("AutoAirDribble", { Text = "Predictive air dribble control", Default = true,
+	Tooltip = "Predicts the ball's short-term motion, then approaches behind and below it while limiting boost on overspeed approaches." })
 Strike:AddSlider("AirDribbleRange", { Text = "Air dribble setup range (uu)", Default = 340, Min = 150, Max = 700, Rounding = 0 })
 Strike:AddSlider("AirDribbleBehind", { Text = "Air dribble contact offset (uu)", Default = 100, Min = 40, Max = 220, Rounding = 0 })
+Strike:AddSlider("AirDribbleBelow", { Text = "Air dribble target below ball (uu)", Default = 55, Min = 20, Max = 120, Rounding = 0 })
+Strike:AddSlider("AirDribbleVerticalRange", { Text = "Air dribble vertical window (uu)", Default = 520, Min = 250, Max = 900, Rounding = 0 })
 Strike:AddSlider("AirDribbleMaxClosing", { Text = "Air dribble max closing speed (uu/s)", Default = 500, Min = 150, Max = 1200, Rounding = 0 })
+Strike:AddToggle("AutoGroundDribble", { Text = "Carry around a blocked lane", Default = true,
+	Tooltip = "When a controlled ground touch has no clean shot or pass, carries the ball toward the less occupied side instead of charging the blocker." })
 
 local Vis = Tabs.Visuals:AddLeftGroupbox("Ball", "circle")
 Vis:AddToggle("BallPath", { Text = "Ball prediction path", Default = true })
@@ -2263,7 +2668,7 @@ Cars:AddToggle("ESPTracers", { Text = "Tracer lines to cars", Default = true })
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
 	Tooltip = "Learns your shot, pass, aerial, and movement outcomes plus observed player touches and completed teammate receptions. Saves aggregate solo, duo, and trio profiles locally without player names." })
-MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = isfile(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
+MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = fileExists(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
 	Tooltip = "Queues this script for game teleports. Kick and crash recovery uses the desktop monitor plus Madium Auto-Execute." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = false,
 	Tooltip = "Activates a visible UI button whose text/name identifies a replay skip" })
@@ -2284,12 +2689,10 @@ Library.ToggleKeybind = Options.MenuKeybind
 Toggles.AutoLoad:OnChanged(function(on)
 	if on then
 		sharedEnv.CatwareTurboSoccerBootstrap = true
-		if not isfolder("Catware") then makefolder("Catware") end
-		if not isfolder(DIR) then makefolder(DIR) end
-		writefile(AUTOLOAD_FLAG, "1")
+		writeText(AUTOLOAD_FLAG, "1")
 	else
 		sharedEnv.CatwareTurboSoccerBootstrap = false
-		if isfile(AUTOLOAD_FLAG) then delfile(AUTOLOAD_FLAG) end
+		if fileExists(AUTOLOAD_FLAG) and type(delfile) == "function" then pcall(delfile, AUTOLOAD_FLAG) end
 	end
 end)
 Toggles.AutoLearn:OnChanged(function(on)
@@ -2305,10 +2708,10 @@ Library:OnUnload(function()
 	conn:Disconnect()
 	if Prediction.step == wrappedPStep then Prediction.step = origPStep end
 	if World.step == wrappedWStep then World.step = origWStep end
-	for _, d in lines do d:Remove() end
-	for _, d in texts do d:Remove() end
-	landing:Remove()
-	boostMarker:Remove()
+	for _, d in lines do if d then pcall(function() d:Remove() end) end end
+	for _, d in texts do if d then pcall(function() d:Remove() end) end end
+	if landing then pcall(function() landing:Remove() end) end
+	if boostMarker then pcall(function() boostMarker:Remove() end) end
 end)
 
 ThemeManager:SetLibrary(Library)
@@ -2322,5 +2725,7 @@ ThemeManager:SetDefaultTheme(ThemeManager.BuiltInThemes["Catppuccin"][2])
 ThemeManager:ApplyToTab(Tabs["UI Settings"])
 SaveManager:LoadAutoloadConfig()
 Toggles.AutoSkipReplay:SetValue(false)
+Toggles.AutoAirDribble:SetValue(true)
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
+uiReady = true
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
