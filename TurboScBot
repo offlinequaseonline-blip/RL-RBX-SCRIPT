@@ -9,7 +9,7 @@ local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local sharedEnv = getgenv()
 if sharedEnv.CatwareTurboSoccerBootstrap == nil then sharedEnv.CatwareTurboSoccerBootstrap = true end
-local SCRIPT_VERSION = "2026.11.27.2"
+local SCRIPT_VERSION = "2026.11.27.3"
 local forceRestart = sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == true
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
 if sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == SCRIPT_VERSION
@@ -2858,7 +2858,17 @@ uiFlow.followTrackedFriend = function()
 	end)
 end
 
+uiFlow.isScriptOwnedGui = function(button)
+	if not button then return false end
+	local function contains(gui)
+		return gui ~= nil and (button == gui or button:IsDescendantOf(gui))
+	end
+	if contains(Library and Library.ScreenGui) or contains(guiFallback.gui) or contains(startupPanel) then return true end
+	return false
+end
+
 uiFlow.guiIsVisible = function(button, root)
+	if uiFlow.isScriptOwnedGui(button) then return false end
 	local node = button
 	while node and node ~= root do
 		if node:IsA("GuiObject") and not node.Visible then return false end
