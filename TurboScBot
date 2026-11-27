@@ -12,9 +12,17 @@ local startupPanel, startupPanelLabel
 local function showStartupPanel(message)
 	local ok = pcall(function()
 		local parent
+		if Players.LocalPlayer then
+			local playerGuiOk, candidate = pcall(function()
+				return Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			end)
+			if playerGuiOk then parent = candidate end
+		end
 		if type(gethui) == "function" then
-			local parentOk, candidate = pcall(gethui)
-			if parentOk then parent = candidate end
+			if not parent then
+				local parentOk, candidate = pcall(gethui)
+				if parentOk then parent = candidate end
+			end
 		end
 		if not parent then
 			local parentOk, candidate = pcall(function() return game:GetService("CoreGui") end)
@@ -309,6 +317,24 @@ end
 local Library = UI.Library
 Library.ForceCheckbox = false
 Library.ShowCustomCursor = false
+local function parentMenuGui()
+	local screenGui = Library.ScreenGui
+	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
+	if not playerGui then
+		local waitOk, candidate = pcall(function() return LP:WaitForChild("PlayerGui", 10) end)
+		if waitOk then playerGui = candidate end
+	end
+	if not screenGui or not playerGui then return false end
+	local ok = pcall(function()
+		screenGui.ResetOnSpawn = false
+		screenGui.IgnoreGuiInset = true
+		screenGui.Enabled = true
+		screenGui.DisplayOrder = 10000
+		screenGui.Parent = playerGui
+	end)
+	return ok and screenGui.Parent == playerGui
+end
+parentMenuGui()
 local Options, Toggles = Library.Options, Library.Toggles
 local uiReady = false
 local live
@@ -3284,6 +3310,7 @@ if type(UI.SaveManager) == "table" then
 end
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "opening menu"
+parentMenuGui()
 local showOk, showError = pcall(function()
 	Library:Toggle(true)
 end)
@@ -3293,11 +3320,12 @@ if not showOk then
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
 	error("Catware window visibility failed: " .. tostring(showError))
 end
-if Library.Toggled ~= true then
+local screenGui = Library.ScreenGui
+if not Library.Toggled or not screenGui or not screenGui.Enabled or not screenGui.Parent then
 	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "window did not become visible"
-	showStartupPanel("A interface foi criada, mas a janela não ficou visível.")
+	showStartupPanel("A janela não ficou visível. Use RightShift para tentar abrir novamente.")
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
-	error("Obsidian window did not become visible")
+	error("Obsidian window did not become visible in PlayerGui")
 end
 uiReady = true
 if startupPanel then pcall(function() startupPanel:Destroy() end) end
