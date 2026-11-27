@@ -8,6 +8,19 @@ local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
 local sharedEnv = getgenv()
+if sharedEnv.CatwareTurboSoccerBootstrap == nil then sharedEnv.CatwareTurboSoccerBootstrap = true end
+local SCRIPT_VERSION = "2026.11.27.2"
+local forceRestart = sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == true
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+if sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == SCRIPT_VERSION
+	and type(sharedEnv.CatwareTurboSoccerUnload) == "function" and not forceRestart then return end
+local teleportConn, teleportFailedConn, renderConn
+local Library
+local function disconnectCoreConnections()
+	if teleportConn then pcall(function() teleportConn:Disconnect() end) teleportConn = nil end
+	if teleportFailedConn then pcall(function() teleportFailedConn:Disconnect() end) teleportFailedConn = nil end
+	if renderConn then pcall(function() renderConn:Disconnect() end) renderConn = nil end
+end
 local startupPanel, startupPanelLabel
 local function showStartupPanel(message)
 	local ok = pcall(function()
@@ -74,6 +87,7 @@ sharedEnv.CatwareTurboSoccerShowStartupFailure = showStartupPanel
 if sharedEnv.CatwareTurboSoccerLoading then
 	local startedAt = sharedEnv.CatwareTurboSoccerLoadingAt
 	if type(startedAt) == "number" and os.clock() - startedAt < 25 then
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup"
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "already loading"
 		showStartupPanel("Outra inicialização ainda está em andamento.")
 		return
@@ -84,7 +98,9 @@ local bootToken = {}
 sharedEnv.CatwareTurboSoccerLoading = bootToken
 sharedEnv.CatwareTurboSoccerLoadingAt = os.clock()
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading"
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup"
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
+sharedEnv.CatwareTurboSoccerLastError = nil
 showStartupPanel("Iniciando o script...")
 task.delay(90, function()
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
@@ -108,6 +124,7 @@ repeat
 	end
 until LP or os.clock() >= playerDeadline
 if not LP then
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "player"
 	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "LocalPlayer unavailable"
 	showStartupPanel("O jogador local não ficou disponível em 15 segundos.")
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
@@ -120,17 +137,29 @@ end
 local function stopLoading(reason)
 	if reason then
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = reason
+		sharedEnv.CatwareTurboSoccerLastError = tostring(reason)
+		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "failed"
 		sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "startup failed"
 		showStartupPanel(reason)
 	end
+	disconnectCoreConnections()
+	if Library and type(Library.Unload) == "function" then pcall(function() Library:Unload() end) end
 	if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 		sharedEnv.CatwareTurboSoccerLoading = nil
 		sharedEnv.CatwareTurboSoccerLoadingAt = nil
 	end
 end
 
+local function recordRuntimeError(stage, err)
+	if err == nil then return end
+	sharedEnv.CatwareTurboSoccerLastError = tostring(err)
+	sharedEnv.CatwareTurboSoccerLastErrorAt = os.time()
+	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = stage
+end
+
 local AUTOLOAD_FLAG = DIR .. "autoload"
 local AUTOLOAD_SOURCE = DIR .. "autoload-source.lua"
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "game modules"
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading game modules"
 showStartupPanel("Carregando os módulos do jogo...")
 
@@ -184,22 +213,22 @@ if type(embeddedSource) == "string" then
 			.. 'local env = getgenv() local ok, source = pcall(readfile, ' .. encodedPath .. ') '
 			.. 'if not ok or type(source) ~= "string" then return end '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwareTurboSoccerLastError = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = true local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwareTurboSoccerLastError = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	else
 		local encodedSource = string.format("%q", embeddedSource)
 		LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 			.. 'local env = getgenv() local source = ' .. encodedSource .. ' '
 			.. 'env.CatwareTurboSoccerSource = source env.CatwareTurboSoccerBootstrap = true '
-			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-			.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+			.. 'local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwareTurboSoccerLastError = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+			.. 'env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = true local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwareTurboSoccerLastError = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 	end
 else
 	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-		.. 'local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwareTurboSoccerLastError = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+		.. 'env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = true local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwareTurboSoccerLastError = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 end
 
 local queued = false
@@ -224,14 +253,14 @@ local function autoLoadEnabled()
 	return readText(AUTOLOAD_FLAG) == "1"
 end
 
-local teleportConn = LP.OnTeleport:Connect(function(state)
+teleportConn = LP.OnTeleport:Connect(function(state)
 	if state == Enum.TeleportState.Started and autoLoadEnabled() and not queued then
 		queued = queueTeleport(LOADER)
 	elseif state == Enum.TeleportState.Failed then
 		queued = false
 	end
 end)
-local teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(player)
+teleportFailedConn = TeleportService.TeleportInitFailed:Connect(function(player)
 	if player == LP then queued = false end
 end)
 
@@ -302,6 +331,7 @@ local function loadRemoteModule(url, cacheName)
 end
 
 local UI = {}
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "UI modules"
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading UI modules"
 showStartupPanel("Carregando a interface Obsidian...")
 local OBSIDIAN_REF = "c8dfe653304d0934ce651e156403e397467cb9a0"
@@ -314,7 +344,7 @@ if type(UI.Library) ~= "table" or type(UI.Library.CreateWindow) ~= "function"
 	stopLoading("Obsidian UI module could not be fetched, compiled, or loaded")
 	return
 end
-local Library = UI.Library
+Library = UI.Library
 Library.ForceCheckbox = false
 Library.ShowCustomCursor = false
 local function parentMenuGui()
@@ -325,6 +355,7 @@ local function parentMenuGui()
 		if waitOk then playerGui = candidate end
 	end
 	if not screenGui or not playerGui then return false end
+	if screenGui.Parent == playerGui and screenGui.Enabled then return true end
 	local ok = pcall(function()
 		screenGui.ResetOnSpawn = false
 		screenGui.IgnoreGuiInset = true
@@ -334,7 +365,6 @@ local function parentMenuGui()
 	end)
 	return ok and screenGui.Parent == playerGui
 end
-parentMenuGui()
 local Options, Toggles = Library.Options, Library.Toggles
 local uiReady = false
 local live
@@ -373,8 +403,8 @@ end
 local function predictBall(seconds)
 	table.clear(path)
 	if not live or not live.ball or not ballPred or type(ballPred.run) ~= "function" then return end
-	local ok = pcall(ballPred.run, ballPred, live.ball, seconds, PATH_STRIDE)
-	if not ok then return end
+	local ok, predictionError = pcall(ballPred.run, ballPred, live.ball, seconds, PATH_STRIDE)
+	if not ok then recordRuntimeError("ball prediction", predictionError) return end
 	for i = 2, #ballPred.points do
 		table.insert(path, { pos = ballPred.points[i], t = ballPred.times[i] })
 	end
@@ -397,6 +427,9 @@ local function shouldPowerSlide(st, angle, distance)
 	if math.abs(angle) < Options.PowerslideSteer.Value then return false end
 	return distance == nil or not Options.PowerslideMinDistance or distance >= Options.PowerslideMinDistance.Value
 end
+
+local maneuver
+local teamRoleLock = { yielding = false, candidate = nil, candidateSince = 0 }
 
 local function applyDriftCorrection(c, st)
 	if not Toggles.AutoDriftCorrection or not Toggles.AutoDriftCorrection.Value
@@ -431,7 +464,6 @@ local function recover(c, st, heading)
 	orient(c, st, vector.normalize(h))
 end
 
-local maneuver
 local aggressiveLeadMode = false
 local airActions = {
 	dribbleActive = false,
@@ -447,6 +479,7 @@ local cooldown = { autoFlip = 0, halfFlip = 0, aerial = 0, airDodge = 0, strike 
 
 local function resetControlState()
 	maneuver, airActions.dribbleActive, airActions.passActive, lastJumpInput, lastGroundJumpAt = nil, false, false, false, nil
+	teamRoleLock.yielding, teamRoleLock.candidate, teamRoleLock.candidateSince = false, nil, 0
 	kickoffAssist.armed, kickoffAssist.locked = false, false
 	cooldown.autoFlip, cooldown.halfFlip, cooldown.aerial, cooldown.airDodge = 0, 0, 0, 0
 	cooldown.strike, cooldown.flick, cooldown.waveDash, cooldown.wallShot = 0, 0, 0, 0
@@ -722,7 +755,17 @@ end
 
 local function teammateCloser(st, target, interceptTime)
 	local rank, leader = teamInterceptRank(st, target, interceptTime)
-	return rank > 1, rank, leader
+	local wantsYield = rank > 1
+	if wantsYield ~= teamRoleLock.yielding then
+		if teamRoleLock.candidate ~= wantsYield then
+			teamRoleLock.candidate, teamRoleLock.candidateSince = wantsYield, now()
+		elseif now() - teamRoleLock.candidateSince >= 0.22 then
+			teamRoleLock.yielding, teamRoleLock.candidate = wantsYield, nil
+		end
+	else
+		teamRoleLock.candidate = nil
+	end
+	return teamRoleLock.yielding, teamRoleLock.yielding and rank or 1, teamRoleLock.yielding and leader or nil
 end
 
 local function attackDirection()
@@ -925,7 +968,7 @@ local function applyAirDribbleControls(c, st, force)
 	recover(c, st, aim)
 	local maxClosing = Options.AirDribbleMaxClosing.Value
 	local speedScale = closingSpeed > maxClosing and math.clamp(maxClosing / closingSpeed, 0.15, 1) or 1
-	local turnScale = math.clamp(1 - math.max(0, angle - 0.45) * 0.7, 0.2, 1)
+	local turnScale = math.clamp(1 - math.max(0, math.abs(angle) - 0.45) * 0.7, 0.2, 1)
 	local overspeed = closingSpeed > maxClosing * 1.15
 	c.throttle = math.clamp(aimDistance / 360, 0.25, 0.85) * speedScale * turnScale
 	c.jump, c.handbrake = false, false
@@ -1345,7 +1388,7 @@ local function strikeOpportunity(st, forceAttack)
 	end
 	local mode = detectedTeamSize()
 	local teamShotBias = mode == 3 and 0.16 or mode == 2 and 0.12 or 0
-	local shotThreshold = math.clamp(math.min(adaptiveShotAlignment(), 0.72) - teamShotBias, 0.46, 0.72)
+	local shotThreshold = math.clamp(adaptiveShotAlignment() - teamShotBias, 0.46, 0.98)
 	if Toggles.AutoStrike.Value and shotClear and shotAlignment >= shotThreshold then
 		return impact, shotDirection, "shot"
 	end
@@ -1729,9 +1772,10 @@ local function drive(c)
 			end
 			maneuver = nil
 		end
-		local ok = pcall(nextoControls, c, st)
+		local ok, nextoError = pcall(nextoControls, c, st)
 		if not ok then
 			nx.job = nil
+			recordRuntimeError("Nexto", nextoError)
 		else
 			local threat = demoThreat(st)
 			if threat then
@@ -2334,13 +2378,28 @@ local wrappedPStep
 wrappedPStep = function(self, controls, ...)
 	lastMatchAt = os.clock()
 	local snapshotOk, snapshot = pcall(fromMatch, self)
+	if not snapshotOk then recordRuntimeError("match snapshot", snapshot) end
 	live = snapshotOk and snapshot or nil
 	if uiReady and snapshotOk and controls and self.match and self.match.phase == "play" then
-		local driveOk = pcall(drive, controls)
-		if driveOk then pcall(applyBoostReserve, controls) end
-		if Protocol and type(Protocol.quantize) == "function" then pcall(Protocol.quantize, controls) end
+		if Toggles.PauseAllAssist and Toggles.PauseAllAssist.Value then
+			resetControlState()
+		else
+			local driveOk, driveError = pcall(drive, controls)
+			if not driveOk then recordRuntimeError("controls", driveError) end
+			if driveOk then
+				local reserveOk, reserveError = pcall(applyBoostReserve, controls)
+				if not reserveOk then recordRuntimeError("boost reserve", reserveError) end
+			end
+		end
+		if Protocol and type(Protocol.quantize) == "function" then
+			local quantizeOk, quantizeError = pcall(Protocol.quantize, controls)
+			if not quantizeOk then recordRuntimeError("protocol", quantizeError) end
+		end
 	end
-	if uiReady then pcall(updateLearning) end
+	if uiReady then
+		local learningOk, learningError = pcall(updateLearning)
+		if not learningOk then recordRuntimeError("adaptive learning", learningError) end
+	end
 	if type(origPStep) == "function" then return origPStep(self, controls, ...) end
 end
 if Prediction and type(origPStep) == "function" then Prediction.step = wrappedPStep end
@@ -2359,10 +2418,19 @@ wrappedWStep = function(self, ...)
 				live = worldState
 				local controls = self.car and self.car.controls
 				if controls then
-					local driveOk = pcall(drive, controls)
-					if driveOk then pcall(applyBoostReserve, controls) end
+					if Toggles.PauseAllAssist and Toggles.PauseAllAssist.Value then
+						resetControlState()
+					else
+						local driveOk, driveError = pcall(drive, controls)
+						if not driveOk then recordRuntimeError("world controls", driveError) end
+						if driveOk then
+							local reserveOk, reserveError = pcall(applyBoostReserve, controls)
+							if not reserveOk then recordRuntimeError("boost reserve", reserveError) end
+						end
+					end
 				end
 			else
+				recordRuntimeError("world snapshot", worldState)
 				live = nil
 			end
 		end
@@ -2659,51 +2727,59 @@ local function draw()
 	for i = n + 1, #lines do if lines[i] then lines[i].Visible = false end end
 end
 
-local nextFlowScanAt, lastReplayClickAt, lastRematchClickAt, lastRewardClickAt = 0, 0, 0, 0
-local rematchQueued, rematchAttempts, rewardAttempts = false, 0, 0
-local lastRegionClickAt = 0
-local currentServerFriendIds, friendsInUniverse = {}, {}
-local trackedPartyFriendIds = sharedEnv.CatwareTurboSoccerPartyFriendIds or {}
-local savedFriendsOk, savedFriends = pcall(function()
-	return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
-end)
-if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
-	and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
-	for _, userId in savedFriends.ids do
-		userId = tonumber(userId)
-		if userId then trackedPartyFriendIds[userId] = true end
+local uiFlow = {
+	nextFlowScanAt = 0, lastReplayClickAt = 0, lastRematchClickAt = 0, lastRewardClickAt = 0,
+	rematchQueued = false, rematchAttempts = 0, rewardAttempts = 0, lastRegionClickAt = 0,
+	currentServerFriendIds = {}, friendsInUniverse = {},
+	trackedPartyFriendIds = sharedEnv.CatwareTurboSoccerPartyFriendIds or {},
+	friendServerUpdatedAt = 0, nextServerFriendQueryAt = 0, nextUniverseFriendQueryAt = 0,
+	friendQueryPending = false, partyFollowPending = false,
+	partyMissingSince = nil, partyWaitSince = nil, partyFriendReturnedAt = nil,
+	partyFollowNextAt = 0, lastPartyFollowAt = 0,
+	statusLabel = nil, errorLabel = nil, nextDiagnosticsAt = 0,
+	rewardLaterLabels = {
+		depois = true, maistarde = true, later = true, notnow = true, skipfornow = true,
+		agoranaon = true, ["agoranão"] = true,
+	},
+}
+do
+	local savedFriendsOk, savedFriends = pcall(function()
+		return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
+	end)
+	if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
+		and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
+		for _, userId in savedFriends.ids do
+			userId = tonumber(userId)
+			if userId then uiFlow.trackedPartyFriendIds[userId] = true end
+		end
 	end
 end
-sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
-local friendServerUpdatedAt, nextServerFriendQueryAt, nextUniverseFriendQueryAt = 0, 0, 0
-local friendQueryPending, partyFollowPending = false, false
-local partyMissingSince, partyWaitSince, partyFriendReturnedAt = nil, nil, nil
-local partyFollowNextAt, lastPartyFollowAt = 0, 0
-local function readUserId(value)
+sharedEnv.CatwareTurboSoccerPartyFriendIds = uiFlow.trackedPartyFriendIds
+uiFlow.readUserId = function(value)
 	local ok, userId = pcall(function() return value.UserId or value.Id end)
 	return ok and tonumber(userId) or nil
 end
 
-local function refreshFriendCaches()
-	if not Toggles.AutoPartyQueue or not Toggles.AutoPartyQueue.Value or friendQueryPending then return end
+uiFlow.refreshFriendCaches = function()
+	if not Toggles.AutoPartyQueue or not Toggles.AutoPartyQueue.Value or uiFlow.friendQueryPending then return end
 	local stamp = os.clock()
-	local queryServer = stamp >= nextServerFriendQueryAt
-	local queryUniverse = stamp >= nextUniverseFriendQueryAt
+	local queryServer = stamp >= uiFlow.nextServerFriendQueryAt
+	local queryUniverse = stamp >= uiFlow.nextUniverseFriendQueryAt
 	if not queryServer and not queryUniverse then return end
-	if queryServer then nextServerFriendQueryAt = stamp + 5 end
-	if queryUniverse then nextUniverseFriendQueryAt = stamp + 20 end
-	friendQueryPending = true
+	if queryServer then uiFlow.nextServerFriendQueryAt = stamp + 5 end
+	if queryUniverse then uiFlow.nextUniverseFriendQueryAt = stamp + 20 end
+	uiFlow.friendQueryPending = true
 	task.spawn(function()
 		if queryServer then
 			local ok, friends = pcall(function() return LP:GetFriendsInServerAsync() end)
 			if ok and type(friends) == "table" then
 				local found = {}
 				for _, friend in friends do
-					local userId = readUserId(friend)
+					local userId = uiFlow.readUserId(friend)
 					if userId then found[userId] = true end
 				end
-				currentServerFriendIds = found
-				friendServerUpdatedAt = os.clock()
+				uiFlow.currentServerFriendIds = found
+				uiFlow.friendServerUpdatedAt = os.clock()
 			end
 		end
 		if queryUniverse then
@@ -2711,58 +2787,58 @@ local function refreshFriendCaches()
 			if ok and type(friends) == "table" then
 				local found = {}
 				for _, entry in friends do
-					local userId = readUserId(entry.User)
+					local userId = uiFlow.readUserId(entry.User)
 					local placeId, gameId = tonumber(entry.PlaceId), tostring(entry.GameId or "")
 					if userId and placeId and gameId ~= "" then
 						found[userId] = { placeId = placeId, gameId = gameId }
 					end
 				end
-				friendsInUniverse = found
+				uiFlow.friendsInUniverse = found
 			end
 		end
-		friendQueryPending = false
+		uiFlow.friendQueryPending = false
 	end)
 end
 
-local function trackedFriendIsPresent()
-	if os.clock() - friendServerUpdatedAt > 15 then return false end
-	for userId in trackedPartyFriendIds do
-		if currentServerFriendIds[userId] then return true end
+uiFlow.trackedFriendIsPresent = function()
+	if os.clock() - uiFlow.friendServerUpdatedAt > 15 then return false end
+	for userId in uiFlow.trackedPartyFriendIds do
+		if uiFlow.currentServerFriendIds[userId] then return true end
 	end
 	return false
 end
 
-local function trackFriendsInCurrentMatch()
+uiFlow.trackFriendsInCurrentMatch = function()
 	local changed = false
-	for userId in currentServerFriendIds do
-		if not trackedPartyFriendIds[userId] then
-			trackedPartyFriendIds[userId] = true
+	for userId in uiFlow.currentServerFriendIds do
+		if not uiFlow.trackedPartyFriendIds[userId] then
+			uiFlow.trackedPartyFriendIds[userId] = true
 			changed = true
 		end
 	end
 	if changed then
 		local ids = {}
-		for userId in trackedPartyFriendIds do table.insert(ids, userId) end
-		sharedEnv.CatwareTurboSoccerPartyFriendIds = trackedPartyFriendIds
+		for userId in uiFlow.trackedPartyFriendIds do table.insert(ids, userId) end
+		sharedEnv.CatwareTurboSoccerPartyFriendIds = uiFlow.trackedPartyFriendIds
 		pcall(function()
 			TeleportService:SetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63", { savedAt = os.time(), ids = ids })
 		end)
 	end
 end
 
-local function followTrackedFriend()
+uiFlow.followTrackedFriend = function()
 	local stamp = os.clock()
-	if partyFollowPending or stamp < partyFollowNextAt then return end
-	partyFollowPending, partyFollowNextAt, lastPartyFollowAt = true, stamp + 20, stamp
+	if uiFlow.partyFollowPending or stamp < uiFlow.partyFollowNextAt then return end
+	uiFlow.partyFollowPending, uiFlow.partyFollowNextAt, uiFlow.lastPartyFollowAt = true, stamp + 20, stamp
 	task.spawn(function()
 		local ok, friends = pcall(function() return LP:GetFriendsInUniverseAsync() end)
 		local best, bestCount = nil, 0
 		if ok and type(friends) == "table" then
 			local servers = {}
 			for _, entry in friends do
-				local userId = readUserId(entry.User)
+				local userId = uiFlow.readUserId(entry.User)
 				local placeId, gameId = tonumber(entry.PlaceId), tostring(entry.GameId or "")
-				if userId and trackedPartyFriendIds[userId] and placeId and gameId ~= "" and gameId ~= game.JobId then
+				if userId and uiFlow.trackedPartyFriendIds[userId] and placeId and gameId ~= "" and gameId ~= game.JobId then
 					local key = tostring(placeId) .. ":" .. gameId
 					local server = servers[key] or { placeId = placeId, gameId = gameId, count = 0 }
 					server.count += 1
@@ -2778,11 +2854,11 @@ local function followTrackedFriend()
 				TeleportService:TeleportToPlaceInstance(best.placeId, best.gameId, LP)
 			end)
 		end
-		partyFollowPending = false
+		uiFlow.partyFollowPending = false
 	end)
 end
 
-local function guiIsVisible(button, root)
+uiFlow.guiIsVisible = function(button, root)
 	local node = button
 	while node and node ~= root do
 		if node:IsA("GuiObject") and not node.Visible then return false end
@@ -2792,7 +2868,7 @@ local function guiIsVisible(button, root)
 	return node == root
 end
 
-local function scoreGapFromHud()
+uiFlow.scoreGapFromHud = function()
 	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
 	local camera = workspace.CurrentCamera
 	if not playerGui or not camera then return nil end
@@ -2800,7 +2876,7 @@ local function scoreGapFromHud()
 	local mid = size.X * 0.5
 	local rows = {}
 	for _, item in playerGui:GetDescendants() do
-		if item:IsA("TextLabel") and guiIsVisible(item, playerGui) then
+		if item:IsA("TextLabel") and uiFlow.guiIsVisible(item, playerGui) then
 			local valueText = tostring(item.Text or ""):match("^%s*(%d+)%s*$")
 			local value = valueText and tonumber(valueText)
 			if value and value <= 99 then
@@ -2820,17 +2896,24 @@ local function scoreGapFromHud()
 			end
 		end
 	end
-	local best, bestY = nil, math.huge
+	local bestLeft, bestRight, bestY = nil, nil, math.huge
 	for _, row in rows do
 		if row.left ~= nil and row.right ~= nil then
 			local distance = math.abs(row.y - size.Y * 0.06)
-			if distance < bestY then best, bestY = math.abs(row.left - row.right), distance end
+			if distance < bestY then bestLeft, bestRight, bestY = row.left, row.right, distance end
 		end
 	end
-	return best
+	if bestLeft == nil or bestRight == nil then return nil end
+	local team = live and live.me and live.me.team
+	if team ~= 0 and team ~= 1 then return nil end
+	local localTeamIsLeft = team == 0
+	if Toggles.InvertScoreboardSides and Toggles.InvertScoreboardSides.Value then
+		localTeamIsLeft = not localTeamIsLeft
+	end
+	return localTeamIsLeft and bestLeft - bestRight or bestRight - bestLeft
 end
 
-local function buttonContext(button)
+uiFlow.buttonContext = function(button)
 	local parts = { button.Name }
 	if button:IsA("TextButton") then table.insert(parts, button.Text) end
 	for _, child in button:GetDescendants() do
@@ -2851,14 +2934,14 @@ local function buttonContext(button)
 	return lower:gsub("[%s%p_]+", "")
 end
 
-local function isReplaySkip(context)
+uiFlow.isReplaySkip = function(context)
 	local replay = context:find("replay", 1, true) or context:find("repeticao", 1, true) or context:find("repetição", 1, true)
 	local skip = context:find("skip", 1, true) or context:find("pular", 1, true) or context:find("saltar", 1, true)
 	local continue = context:find("continue", 1, true) or context:find("continuar", 1, true)
 	return replay ~= nil and (skip ~= nil or continue ~= nil)
 end
 
-local function isYesAction(button)
+uiFlow.isYesAction = function(button)
 	local labels = { tostring(button.Name or "") }
 	if button:IsA("TextButton") then table.insert(labels, tostring(button.Text or "")) end
 	for _, child in button:GetDescendants() do
@@ -2876,7 +2959,7 @@ local function isYesAction(button)
 	return false
 end
 
-local function isMoreRegionsConfirmation(context)
+uiFlow.isMoreRegionsConfirmation = function(context)
 	local region = context:find("region", 1, true) or context:find("regiao", 1, true) or context:find("regiões", 1, true)
 	local more = context:find("more", 1, true) or context:find("additional", 1, true) or context:find("broader", 1, true)
 		or context:find("expand", 1, true) or context:find("mais", 1, true) or context:find("outra", 1, true)
@@ -2887,7 +2970,7 @@ local function isMoreRegionsConfirmation(context)
 	return region ~= nil and more ~= nil and search ~= nil
 end
 
-local function isRematch(context, postMatch)
+uiFlow.isRematch = function(context, postMatch)
 	local phrases = {
 		"rematch", "playagain", "requeue", "queueagain", "jogarnovamente",
 		"jogardenovo", "jogaroutrapartida", "jogaroutrajogo", "novapartida",
@@ -2901,17 +2984,12 @@ local function isRematch(context, postMatch)
 	return false
 end
 
-local rewardLaterLabels = {
-	depois = true, maistarde = true, later = true, notnow = true, skipfornow = true,
-	agoranaon = true, ["agoranão"] = true,
-}
-
-local function isRewardLater(button)
+uiFlow.isRewardLater = function(button)
 	local function matches(value, isName)
 		local label = tostring(value or ""):lower():gsub("[%s%p_]+", "")
-		if rewardLaterLabels[label] then return true end
+		if uiFlow.rewardLaterLabels[label] then return true end
 		if isName then
-			for phrase in rewardLaterLabels do
+			for phrase in uiFlow.rewardLaterLabels do
 				if label:find(phrase, 1, true) then return true end
 			end
 		end
@@ -2927,7 +3005,7 @@ local function isRewardLater(button)
 	return false
 end
 
-local function fireButtonSignal(signal, inputObject, clickCount)
+uiFlow.fireButtonSignal = function(signal, inputObject, clickCount)
 	if type(getconnections) ~= "function" then return false end
 	local ok, connections = pcall(getconnections, signal)
 	if not ok or type(connections) ~= "table" then return false end
@@ -2952,7 +3030,7 @@ local function fireButtonSignal(signal, inputObject, clickCount)
 	return fired
 end
 
-local function physicalButtonClick(button)
+uiFlow.physicalButtonClick = function(button)
 	if type(isrbxactive) ~= "function" or type(mousemoveabs) ~= "function" or type(mouse1click) ~= "function" then return false end
 	local focusOk, focused = pcall(isrbxactive)
 	if not focusOk or not focused then return false end
@@ -2969,109 +3047,155 @@ local function physicalButtonClick(button)
 	return ok
 end
 
-local function activateUiButton(button)
-	if fireButtonSignal(button.Activated, nil, 0) then return true end
-	if fireButtonSignal(button.MouseButton1Click) then return true end
-	return physicalButtonClick(button)
+uiFlow.activateUiButton = function(button)
+	if uiFlow.fireButtonSignal(button.Activated, nil, 0) then return true end
+	if uiFlow.fireButtonSignal(button.MouseButton1Click) then return true end
+	return uiFlow.physicalButtonClick(button)
 end
 
-local function autoAdvanceUi()
+uiFlow.autoAdvanceUi = function()
 	if not Toggles.AutoSkipReplay.Value and not Toggles.AutoRematch.Value and not Toggles.AutoDismissRewards.Value
 		and not Toggles.AutoExpandRegions.Value and not Toggles.AutoPartyQueue.Value
 		and not Toggles.AggressiveTwoGoalMode.Value then return end
 	local now = os.clock()
-	if now < nextFlowScanAt then return end
-	nextFlowScanAt = now + 0.3
-	refreshFriendCaches()
+	if now < uiFlow.nextFlowScanAt then return end
+	uiFlow.nextFlowScanAt = now + 0.3
+	uiFlow.refreshFriendCaches()
 	if Toggles.AggressiveTwoGoalMode.Value then
-		local scoreGap = scoreGapFromHud()
+		local scoreGap = uiFlow.scoreGapFromHud()
 		aggressiveLeadMode = scoreGap ~= nil and scoreGap >= 2
 	else
 		aggressiveLeadMode = false
 	end
-	if Toggles.AutoPartyQueue.Value and friendServerUpdatedAt > 0 then trackFriendsInCurrentMatch() end
-	if live and live.phase == "play" then rematchQueued, rematchAttempts = false, 0 end
-	if rematchQueued and now - lastRematchClickAt >= 6 then rematchQueued = false end
+	if Toggles.AutoPartyQueue.Value and uiFlow.friendServerUpdatedAt > 0 then uiFlow.trackFriendsInCurrentMatch() end
+	if live and live.phase == "play" then uiFlow.rematchQueued, uiFlow.rematchAttempts = false, 0 end
+	if uiFlow.rematchQueued and now - uiFlow.lastRematchClickAt >= 6 then uiFlow.rematchQueued = false end
 	local recentMatch = lastMatchAt > 0 and now - lastMatchAt < 180
 	local matchStopped = not live or live.source ~= "match" or live.phase ~= "play" or now - lastMatchAt > 1.5
 	local postMatch = recentMatch and matchStopped
 	local partyTracking = Toggles.AutoPartyQueue.Value
-	local trackedFriends = partyTracking and next(trackedPartyFriendIds) ~= nil
-	local friendPresent = trackedFriends and trackedFriendIsPresent() or false
+	local trackedFriends = partyTracking and next(uiFlow.trackedPartyFriendIds) ~= nil
+	local friendPresent = trackedFriends and uiFlow.trackedFriendIsPresent() or false
 	local partyWaiting = false
 	if live and live.source == "match" and live.phase == "play" and partyTracking then
-		trackFriendsInCurrentMatch()
-		trackedFriends = next(trackedPartyFriendIds) ~= nil
-		friendPresent = trackedFriends and trackedFriendIsPresent() or false
+		uiFlow.trackFriendsInCurrentMatch()
+		trackedFriends = next(uiFlow.trackedPartyFriendIds) ~= nil
+		friendPresent = trackedFriends and uiFlow.trackedFriendIsPresent() or false
 		if trackedFriends and not friendPresent then
-			partyMissingSince = partyMissingSince or now
-			if now - partyMissingSince >= 15 then followTrackedFriend() end
+			uiFlow.partyMissingSince = uiFlow.partyMissingSince or now
+			if now - uiFlow.partyMissingSince >= 15 then uiFlow.followTrackedFriend() end
 		else
-			partyMissingSince = nil
+			uiFlow.partyMissingSince = nil
 		end
 	else
-		partyMissingSince = nil
+		uiFlow.partyMissingSince = nil
 	end
 	if postMatch and trackedFriends then
 		if friendPresent then
-			partyWaitSince, partyFriendReturnedAt = nil, partyFriendReturnedAt or now
-			partyWaiting = now - partyFriendReturnedAt < 5
+			uiFlow.partyWaitSince, uiFlow.partyFriendReturnedAt = nil, uiFlow.partyFriendReturnedAt or now
+			partyWaiting = now - uiFlow.partyFriendReturnedAt < 5
 		else
-			partyFriendReturnedAt = nil
-			partyWaitSince = partyWaitSince or now
+			uiFlow.partyFriendReturnedAt = nil
+			uiFlow.partyWaitSince = uiFlow.partyWaitSince or now
 			partyWaiting = true
-			if now - partyWaitSince >= 25 then followTrackedFriend() end
+			if now - uiFlow.partyWaitSince >= 25 then uiFlow.followTrackedFriend() end
 		end
 	elseif not postMatch then
-		partyWaitSince, partyFriendReturnedAt = nil, nil
+		uiFlow.partyWaitSince, uiFlow.partyFriendReturnedAt = nil, nil
 	end
 	local playerGui = LP:FindFirstChildOfClass("PlayerGui")
 	if not playerGui then return end
 	local rewardButton, replayButton, rematchButton, regionButton
 	for _, item in playerGui:GetDescendants() do
-		if item:IsA("GuiButton") and item.Active and guiIsVisible(item, playerGui) then
-			local context = buttonContext(item)
-			if not regionButton and Toggles.AutoExpandRegions.Value and isYesAction(item) and isMoreRegionsConfirmation(context) then
+		if item:IsA("GuiButton") and item.Active and uiFlow.guiIsVisible(item, playerGui) then
+			local context = uiFlow.buttonContext(item)
+			if not regionButton and Toggles.AutoExpandRegions.Value and uiFlow.isYesAction(item) and uiFlow.isMoreRegionsConfirmation(context) then
 				regionButton = item
 			end
-			if postMatch and not rewardButton and Toggles.AutoDismissRewards.Value and isRewardLater(item) then rewardButton = item end
-			if not replayButton and Toggles.AutoSkipReplay.Value and isReplaySkip(context) then replayButton = item end
-			if postMatch and not rematchButton and Toggles.AutoRematch.Value and isRematch(context, postMatch) then rematchButton = item end
+			if postMatch and not rewardButton and Toggles.AutoDismissRewards.Value and uiFlow.isRewardLater(item) then rewardButton = item end
+			if not replayButton and Toggles.AutoSkipReplay.Value and uiFlow.isReplaySkip(context) then replayButton = item end
+			if postMatch and not rematchButton and Toggles.AutoRematch.Value and uiFlow.isRematch(context, postMatch) then rematchButton = item end
 			if rewardButton and replayButton and rematchButton then break end
 		end
 	end
-	if regionButton and now - lastRegionClickAt >= 3 then
-		lastRegionClickAt = now
-		activateUiButton(regionButton)
+	if regionButton and now - uiFlow.lastRegionClickAt >= 3 then
+		uiFlow.lastRegionClickAt = now
+		uiFlow.activateUiButton(regionButton)
 		return
 	end
 	if rewardButton then
-		if rewardAttempts < 8 and now - lastRewardClickAt >= 2 then
-			lastRewardClickAt = now
-			rewardAttempts += 1
-			activateUiButton(rewardButton)
+		if uiFlow.rewardAttempts < 8 and now - uiFlow.lastRewardClickAt >= 2 then
+			uiFlow.lastRewardClickAt = now
+			uiFlow.rewardAttempts += 1
+			uiFlow.activateUiButton(rewardButton)
 		end
 		return
 	end
-	rewardAttempts = 0
+	uiFlow.rewardAttempts = 0
 	if replayButton then
-		if now - lastReplayClickAt >= 1.5 then
-			lastReplayClickAt = now
-			activateUiButton(replayButton)
+		if now - uiFlow.lastReplayClickAt >= 1.5 then
+			uiFlow.lastReplayClickAt = now
+			uiFlow.activateUiButton(replayButton)
 		end
 		return
 	end
 	if partyWaiting then return end
-	if rematchButton and not rematchQueued and rematchAttempts < 8 and now - lastRematchClickAt >= 3 then
-		lastRematchClickAt = now
-		rematchAttempts += 1
-		rematchQueued = activateUiButton(rematchButton)
+	if rematchButton and not uiFlow.rematchQueued and uiFlow.rematchAttempts < 8 and now - uiFlow.lastRematchClickAt >= 3 then
+		uiFlow.lastRematchClickAt = now
+		uiFlow.rematchAttempts += 1
+		uiFlow.rematchQueued = uiFlow.activateUiButton(rematchButton)
 	end
 end
 
-local conn = RunService.RenderStepped:Connect(function()
+uiFlow.updateDiagnostics = function()
+	local stamp = os.clock()
+	if stamp < uiFlow.nextDiagnosticsAt then return end
+	uiFlow.nextDiagnosticsAt = stamp + 0.5
+	local action, role, eta = "manual", "—", "—"
+	if Toggles.PauseAllAssist and Toggles.PauseAllAssist.Value then
+		action = "pausado"
+	elseif maneuver then
+		action = tostring(maneuver.kind)
+	elseif Toggles.NextoBot and Toggles.NextoBot.Value then
+		action = "Nexto"
+	elseif uiReady then
+		action = "assistências"
+	end
+	if live and live.me and live.me.car then
+		local st = stateOf(live.me.car)
+		local target, interceptTime = bestBallTarget(st)
+		if target and interceptTime then
+			eta = string.format("%.2fs", interceptTime)
+			if detectedTeamSize() == 1 then
+				role = "solo"
+			else
+				local rank = teamInterceptRank(st, target, interceptTime)
+				role = rank > 1 and "suporte" or "atacante"
+			end
+		end
+	end
+	local samples = 0
+	if learningData and learningData.modes then
+		local profile = modeProfile(detectedTeamSize())
+		if profile and profile.actions then
+			samples = (profile.actions.shot.samples or 0) + (profile.actions.pass.samples or 0)
+				+ (profile.actions.challenge.samples or 0)
+		end
+	end
+	if uiFlow.statusLabel then
+		uiFlow.statusLabel:SetText(string.format("Etapa %s | ação %s | papel %s",
+			tostring(sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 or "desconhecida"), action, role))
+	end
+	if uiFlow.errorLabel then
+		local lastError = tostring(sharedEnv.CatwareTurboSoccerLastError or "nenhum")
+		if #lastError > 26 then lastError = lastError:sub(1, 23) .. "..." end
+		uiFlow.errorLabel:SetText(string.format("ETA %s | amostras %d | erro %s", eta, samples, lastError))
+	end
+end
+
+renderConn = RunService.RenderStepped:Connect(function()
 	if not uiReady then nx.spent = 0 return end
-	local ok = pcall(function()
+	local ok, renderError = pcall(function()
 		local want = Toggles.BallPath.Value or Toggles.AutoFlip.Value
 			or Toggles.AutoFastAerial.Value or Toggles.AutoHalfFlip.Value
 			or Toggles.AutoStrike.Value or Toggles.AutoPass.Value or Toggles.AutoPassReceive.Value
@@ -3081,8 +3205,10 @@ local conn = RunService.RenderStepped:Connect(function()
 		if want then predictBall(Options.PathSeconds.Value) else table.clear(path) end
 		ensureControlHooks()
 		draw()
-		autoAdvanceUi()
+		uiFlow.autoAdvanceUi()
+		uiFlow.updateDiagnostics()
 	end)
+	if not ok then recordRuntimeError("render", renderError) end
 	nx.spent = 0
 end)
 
@@ -3107,6 +3233,9 @@ Bot:AddToggle("NextoBot", { Text = "Nexto (neural bot)", Default = false, Risky 
 	:AddKeyPicker("NextoBotKey", { Default = "N", SyncToggleState = true, Mode = "Toggle", Text = "Nexto" })
 Bot:AddToggle("NextoTacticalAssists", { Text = "Tactical overrides for Nexto", Default = false,
 	Tooltip = "Off preserves Nexto except individually enabled air-dribble, aerial-intercept, and ground-carry assists. On enables all custom pass, shot, and rotation logic." })
+Bot:AddToggle("PauseAllAssist", { Text = "Pause all assists", Default = false,
+	Tooltip = "Returns control to your normal inputs and cancels any active scripted maneuver." })
+	:AddKeyPicker("PauseAllAssistKey", { Default = "P", SyncToggleState = true, Mode = "Toggle", Text = "Pause assists" })
 
 local Assist = Tabs.Main:AddRightGroupbox("Assists", "hand-helping")
 local Mechanics = Tabs.Main:AddLeftGroupbox("Mechanics", "car")
@@ -3244,7 +3373,16 @@ Cars:AddToggle("BoostESP", { Text = "Boost amount over cars", Default = true })
 
 local MenuGroup = Tabs["UI Settings"]:AddLeftGroupbox("Menu", "wrench")
 MenuGroup:AddToggle("AutoLearn", { Text = "Adaptive learning", Default = true,
-	Tooltip = "Adjusts shot, pass, aerial, and movement thresholds from your outcomes and aggregate observed touches and receptions. Stores solo, duo, and trio statistics without player names." })
+	Tooltip = "Adjusts heuristics from outcomes and observed touches; it does not retrain Nexto's neural weights. Stores solo, duo, and trio aggregates without player names." })
+uiFlow.statusLabel = MenuGroup:AddLabel("Etapa inicializando | ação manual | papel —")
+uiFlow.errorLabel = MenuGroup:AddLabel("ETA — | amostras 0 | erro nenhum")
+MenuGroup:AddButton("Reset adaptive memory", function()
+	learningData = { version = 1, modes = {} }
+	learningTrial, pendingPeerPass, pendingOwnPass, previousPeerBallVelocity = nil, nil, nil, nil
+	learnedDoubleCommitRate = { [1] = 0, [2] = 0, [3] = 0 }
+	learningDirty = true
+	saveLearning()
+end)
 MenuGroup:AddToggle("AutoLoad", { Text = "Auto-load on teleport", Default = fileExists(AUTOLOAD_FLAG) or sharedEnv.CatwareTurboSoccerBootstrap == true,
 	Tooltip = "Queues this script for supported Roblox place teleports. A moderation kick does not trigger an automatic retry." })
 MenuGroup:AddToggle("AutoSkipReplay", { Text = "Skip goal replay", Default = false,
@@ -3259,6 +3397,8 @@ MenuGroup:AddToggle("AutoPartyQueue", { Text = "Wait for tracked friends between
 	Tooltip = "Tracks Roblox friends observed in your current server, waits for them after a match, then joins their current public server when available." })
 MenuGroup:AddToggle("AggressiveTwoGoalMode", { Text = "Attack more with a 2-goal gap", Default = true,
 	Tooltip = "When the visible score gap is at least two, overrides teammate yielding and pass preference to attempt direct shots, aerials, and flicks." })
+MenuGroup:AddToggle("InvertScoreboardSides", { Text = "Reverse scoreboard team sides", Default = false,
+	Tooltip = "Use this if the script treats the other team's score as yours when deciding whether you lead by two." })
 MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu keybind" })
 MenuGroup:AddButton("Unload", function() Library:Unload() end)
 Library.ToggleKeybind = Options.MenuKeybind
@@ -3280,9 +3420,8 @@ getgenv().CatwareTurboSoccerUnload = function() Library:Unload() end
 Library:OnUnload(function()
 	saveLearning()
 	getgenv().CatwareTurboSoccerUnload = nil
-	teleportConn:Disconnect()
-	teleportFailedConn:Disconnect()
-	conn:Disconnect()
+	if sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == SCRIPT_VERSION then sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil end
+	disconnectCoreConnections()
 	if Prediction and Prediction.step == wrappedPStep then Prediction.step = origPStep end
 	if World and World.step == wrappedWStep then World.step = origWStep end
 	for _, d in lines do if d then pcall(function() d:Remove() end) end end
@@ -3309,25 +3448,37 @@ if type(UI.SaveManager) == "table" then
 	pcall(function() UI.SaveManager:LoadAutoloadConfig() end)
 end
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "menu"
 sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "opening menu"
-parentMenuGui()
-local showOk, showError = pcall(function()
-	Library:Toggle(true)
-end)
+local function menuIsVisible()
+	local screenGui = Library.ScreenGui
+	return Library.Toggled == true and screenGui ~= nil and screenGui.Enabled == true and screenGui.Parent ~= nil
+end
+local showOk, showError = true, nil
+local showDeadline = os.clock() + 8
+while Library.ActiveLoading and os.clock() < showDeadline do task.wait(0.1) end
+if not Library.ActiveLoading then
+	parentMenuGui()
+	if not Library.Toggled then
+		showOk, showError = pcall(function() Library:Toggle(true) end)
+	end
+	if showOk then parentMenuGui() end
+end
+while showOk and not menuIsVisible() and os.clock() < showDeadline do
+	parentMenuGui()
+	task.wait(0.1)
+end
 if not showOk then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "window visibility failed"
-	showStartupPanel("Não foi possível abrir a janela: " .. tostring(showError))
-	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+	stopLoading("Não foi possível abrir a janela: " .. tostring(showError))
 	error("Catware window visibility failed: " .. tostring(showError))
 end
-local screenGui = Library.ScreenGui
-if not Library.Toggled or not screenGui or not screenGui.Enabled or not screenGui.Parent then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "window did not become visible"
-	showStartupPanel("A janela não ficou visível. Use RightShift para tentar abrir novamente.")
-	if sharedEnv.CatwareTurboSoccerLoading == bootToken then sharedEnv.CatwareTurboSoccerLoading = nil end
+if not menuIsVisible() then
+	stopLoading("A janela não ficou visível. Use RightShift para tentar abrir novamente.")
 	error("Obsidian window did not become visible in PlayerGui")
 end
 uiReady = true
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = SCRIPT_VERSION
+sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
 if startupPanel then pcall(function() startupPanel:Destroy() end) end
 startupPanel, startupPanelLabel = nil, nil
 sharedEnv.CatwareTurboSoccerShowStartupFailure = nil
