@@ -227,8 +227,8 @@ else
 	LOADER = 'if not game:IsLoaded() then game.Loaded:Wait() end '
 		.. 'local ok, source = pcall(function() return game:HttpGet("' .. SCRIPT_URL .. '") end) '
 		.. 'if not ok or type(source) ~= "string" then return end '
-		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwareTurboSoccerLastError = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
-		.. 'env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = true local ran, err = pcall(fn) if not ran then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(err) env.CatwareTurboSoccerLastError = tostring(err) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime" env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "runtime error" env.CatwareTurboSoccerLoading = nil end'
+		.. 'local env = getgenv() local compiled, fn = pcall(loadstring, source) if not compiled or type(fn) ~= "function" then env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = tostring(fn) env.CatwareTurboSoccerLastError = tostring(fn) env.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "compile" env.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "compile failed" env.CatwareTurboSoccerLoading = nil return end '
+		.. 'env.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = true local ran, err = pcall(fn) if not ran then env.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = tostring(err) env.CatwareTurboSoccerLastError = tostring(err) env.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "runtime" env.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "runtime error" env.CatwareTurboSoccerLoading = nil end'
 end
 
 local queued = false
@@ -304,7 +304,7 @@ for name, module in {
 	if not module then table.insert(missingGameModules, name) end
 end
 if #missingGameModules > 0 then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "Missing game modules: " .. table.concat(missingGameModules, ", ")
+	sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "Missing game modules: " .. table.concat(missingGameModules, ", ")
 end
 
 local function instantiateRemoteModule(source)
@@ -331,8 +331,8 @@ local function loadRemoteModule(url, cacheName)
 end
 
 local UI = {}
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "UI modules"
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "loading UI modules"
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "UI modules"
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "loading UI modules"
 showStartupPanel("Carregando a interface Obsidian...")
 local OBSIDIAN_REF = "c8dfe653304d0934ce651e156403e397467cb9a0"
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/" .. OBSIDIAN_REF .. "/"
@@ -2744,7 +2744,7 @@ local uiFlow = {
 }
 do
 	local savedFriendsOk, savedFriends = pcall(function()
-		return TeleportService:GetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63")
+		return TeleportService:GetTeleportSetting("CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG")
 	end)
 	if savedFriendsOk and type(savedFriends) == "table" and tonumber(savedFriends.savedAt)
 		and os.time() - tonumber(savedFriends.savedAt) <= 1800 and type(savedFriends.ids) == "table" then
@@ -2821,7 +2821,7 @@ uiFlow.trackFriendsInCurrentMatch = function()
 		for userId in uiFlow.trackedPartyFriendIds do table.insert(ids, userId) end
 		sharedEnv.CatwareTurboSoccerPartyFriendIds = uiFlow.trackedPartyFriendIds
 		pcall(function()
-			TeleportService:SetTeleportSetting("CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63", { savedAt = os.time(), ids = ids })
+			TeleportService:SetTeleportSetting("CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG", { savedAt = os.time(), ids = ids })
 		end)
 	end
 end
@@ -3194,7 +3194,7 @@ uiFlow.updateDiagnostics = function()
 	end
 	if uiFlow.statusLabel then
 		uiFlow.statusLabel:SetText(string.format("Etapa %s | ação %s | papel %s",
-			tostring(sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 or "desconhecida"), action, role))
+			tostring(sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG or "desconhecida"), action, role))
 	end
 	if uiFlow.errorLabel then
 		local lastError = tostring(sharedEnv.CatwareTurboSoccerLastError or "nenhum")
@@ -3430,7 +3430,7 @@ getgenv().CatwareTurboSoccerUnload = function() Library:Unload() end
 Library:OnUnload(function()
 	saveLearning()
 	getgenv().CatwareTurboSoccerUnload = nil
-	if sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 == SCRIPT_VERSION then sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil end
+	if sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG == SCRIPT_VERSION then sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = nil end
 	disconnectCoreConnections()
 	if Prediction and Prediction.step == wrappedPStep then Prediction.step = origPStep end
 	if World and World.step == wrappedWStep then World.step = origWStep end
@@ -3458,8 +3458,8 @@ if type(UI.SaveManager) == "table" then
 	pcall(function() UI.SaveManager:LoadAutoloadConfig() end)
 end
 if sharedEnv.CatwareTurboSoccerBootstrap == true then Toggles.AutoLoad:SetValue(true) end
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "menu"
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "opening menu"
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "menu"
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "opening menu"
 local function menuIsVisible()
 	local screenGui = Library.ScreenGui
 	return Library.Toggled == true and screenGui ~= nil and screenGui.Enabled == true and screenGui.Parent ~= nil
@@ -3487,16 +3487,16 @@ if not menuIsVisible() then
 	error("Obsidian window did not become visible in PlayerGui")
 end
 uiReady = true
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = SCRIPT_VERSION
-sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = SCRIPT_VERSION
+sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "ready"
 if startupPanel then pcall(function() startupPanel:Destroy() end) end
 startupPanel, startupPanelLabel = nil, nil
 sharedEnv.CatwareTurboSoccerShowStartupFailure = nil
 if #missingGameModules == 0 then
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = nil
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready"
+	sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = nil
+	sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "ready"
 else
-	sharedEnv.CatwarpZEAWYtiB6bJ16NuLbGCc6CZ6jJdKfb63 = "ready; game hooks unavailable"
+	sharedEnv.CatwarpZELkorMwhkkpShF5PvT8YnqRCupnLTNG = "ready; game hooks unavailable"
 end
 if sharedEnv.CatwareTurboSoccerLoading == bootToken then
 	sharedEnv.CatwareTurboSoccerLoading = nil
